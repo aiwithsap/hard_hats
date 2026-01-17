@@ -18,3 +18,4 @@ cryptography>=42.0.0
 # Validation
 pydantic>=2.5.3
 pydantic-settings>=2.1.0
+# Built 2026-01-17T10:42:48Z
