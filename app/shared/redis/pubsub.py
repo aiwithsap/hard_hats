@@ -72,6 +72,11 @@ class FramePublisher:
         )
         await self.client.expire(f"camera_meta:{camera_id}", 30)
 
+    async def close(self) -> None:
+        """Close the Redis connection."""
+        if self.client:
+            await self.client.close()
+
 
 class FrameSubscriber:
     """Subscribes to frame updates from Redis."""
@@ -169,6 +174,11 @@ class EventPublisher:
             },
         }
         return await self.publish_event(organization_id, event_data)
+
+    async def close(self) -> None:
+        """Close the Redis connection."""
+        if self.client:
+            await self.client.close()
 
 
 class EventSubscriber:

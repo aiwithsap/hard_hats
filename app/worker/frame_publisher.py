@@ -56,7 +56,7 @@ class FrameProcessor:
                 return False
 
             # Publish to Redis
-            await self.publisher.publish(camera_id, encoded.tobytes())
+            await self.publisher.publish_frame(camera_id, encoded.tobytes())
 
             return True
 
