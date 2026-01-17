@@ -16,11 +16,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for caching
-COPY requirements-worker-new.txt requirements.txt
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies inline (avoiding file upload corruption)
+RUN pip install --no-cache-dir \
+    ultralytics>=8.1.0 \
+    opencv-python-headless>=4.9.0.80 \
+    numpy>=1.26.3 \
+    'sqlalchemy[asyncio]>=2.0.25' \
+    asyncpg>=0.29.0 \
+    redis>=5.0.1 \
+    cryptography>=42.0.0 \
+    pydantic>=2.5.3 \
+    pydantic-settings>=2.1.0
 
 # Copy shared code
 COPY app/shared/ app/shared/
