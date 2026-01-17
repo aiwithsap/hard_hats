@@ -1,0 +1,42 @@
+# Dockerfile for Hard Hats Detection - Web Service
+# Serves FastAPI API, authentication, SSE, and MJPEG proxy
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for caching
+COPY requirements-web.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements-web.txt
+
+# Copy shared code
+COPY app/shared/ app/shared/
+
+# Copy web service code
+COPY app/web/ app/web/
+
+# Copy Alembic for migrations
+COPY alembic/ alembic/
+COPY alembic.ini .
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8123}/health || exit 1
+
+# Expose port (Railway provides PORT env var)
+EXPOSE ${PORT:-8123}
+
+# Run migrations then start web server
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.web.main:app --host 0.0.0.0 --port ${PORT:-8123}"]

@@ -1,0 +1,20 @@
+# Hard Hats Detection - Worker Service Dependencies
+
+# Computer Vision
+ultralytics>=8.1.0
+opencv-python-headless>=4.9.0.80
+numpy>=1.26.3
+
+# Database
+sqlalchemy[asyncio]>=2.0.25
+asyncpg>=0.29.0
+
+# Redis
+redis>=5.0.1
+
+# Encryption (for RTSP credentials)
+cryptography>=42.0.0
+
+# Validation
+pydantic>=2.5.3
+pydantic-settings>=2.1.0

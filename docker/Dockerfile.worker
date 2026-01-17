@@ -1,0 +1,43 @@
+# Dockerfile for Hard Hats Detection - Worker Service
+# Handles YOLO inference, RTSP connections, and frame processing
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for OpenCV and video processing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for caching
+COPY requirements-worker.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements-worker.txt
+
+# Copy shared code
+COPY app/shared/ app/shared/
+
+# Copy worker service code
+COPY app/worker/ app/worker/
+
+# Create directories for runtime data
+RUN mkdir -p data/weights data/thumbnails data/videos
+
+# Pre-download YOLO weights at build time (optional, reduces first-run latency)
+# Uncomment if you want weights baked into the image
+# RUN python -c "from ultralytics import YOLO; YOLO('yolo11n.pt')"
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Worker process (no port needed - communicates via Redis)
+CMD ["python", "-m", "app.worker.main"]

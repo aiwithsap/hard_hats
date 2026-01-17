@@ -1,0 +1,84 @@
+# Docker Compose for Local Development
+# Includes PostgreSQL, Redis, Web, and Worker services
+
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: hardhats-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hardhats
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for pub/sub
+  redis:
+    image: redis:7-alpine
+    container_name: hardhats-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Web Service (API, Auth, SSE, MJPEG proxy)
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: hardhats-web
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/hardhats
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - ENCRYPTION_KEY=dev-encryption-key-32-bytes-long!
+      - LOG_LEVEL=DEBUG
+      - PORT=8123
+    ports:
+      - "8123:8123"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+
+  # Worker Service (YOLO inference, RTSP, frame processing)
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: hardhats-worker
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/hardhats
+      - REDIS_URL=redis://redis:6379
+      - ENCRYPTION_KEY=dev-encryption-key-32-bytes-long!
+      - LOG_LEVEL=DEBUG
+      - WEIGHTS_PATH=data/weights/best_yolo11s.pt
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+
+volumes:
+  postgres_data:
+  redis_data:

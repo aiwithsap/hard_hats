@@ -69,7 +69,26 @@ password_reset_tokens (id, user_id, token_hash, expires_at, used_at)
 
 ## Authentication System
 
-### JWT Token Structure
+### Why HTTP-Only Cookies (Not localStorage + Headers)
+
+**Critical Constraint:** The dashboard uses `<img src="/api/stream/{id}">` for MJPEG and `new EventSource('/api/sse/events')` for SSE. Neither can send Authorization headers - browsers don't support it.
+
+**Solution:** HTTP-only cookie-based authentication. Browser automatically includes cookies with every request.
+
+### Cookie Configuration
+```python
+response.set_cookie(
+    key="session",
+    value=jwt_token,
+    httponly=True,      # JavaScript cannot read (XSS protection)
+    secure=True,        # HTTPS only (Railway provides this)
+    samesite="strict",  # CSRF protection
+    max_age=3600,       # 1 hour expiry
+    path="/",           # Available for all routes
+)
+```
+
+### JWT Token Structure (Stored in Cookie)
 ```json
 {
   "sub": "user_uuid",
@@ -77,6 +96,16 @@ password_reset_tokens (id, user_id, token_hash, expires_at, used_at)
   "role": "admin|manager|operator",
   "exp": 1234567890
 }
+```
+
+### Auth Dependency (Extracts from Cookie)
+```python
+async def get_current_user(request: Request) -> User:
+    token = request.cookies.get("session")
+    if not token:
+        raise HTTPException(401, "Not authenticated")
+    payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+    return await get_user_by_id(payload["sub"])
 ```
 
 ### Role Permissions (Simplified - Admin-Only Camera Setup)
@@ -94,10 +123,33 @@ password_reset_tokens (id, user_id, token_hash, expires_at, used_at)
 
 ### Auth Endpoints (No Email Verification)
 ```
-POST /api/v1/auth/register        # Create org + admin user (active immediately)
-POST /api/v1/auth/login           # Get JWT tokens
-POST /api/v1/auth/refresh         # Refresh access token
+POST /api/v1/auth/register        # Create org + admin → Sets session cookie
+POST /api/v1/auth/login           # Verify credentials → Sets session cookie
+POST /api/v1/auth/logout          # Clears session cookie
+POST /api/v1/auth/refresh         # Refresh before expiry → Sets new cookie
 POST /api/v1/auth/change-password # Change own password (authenticated)
+GET  /api/v1/auth/me              # Get current user from cookie
+```
+
+### Frontend Integration (Embedded Dashboard)
+```javascript
+// Login - cookie is set automatically by response
+await fetch('/api/v1/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',  // REQUIRED for cookies
+    body: JSON.stringify({ email, password })
+});
+
+// All subsequent requests include cookie automatically
+// MJPEG streams work:
+<img src="/api/stream/${camera.id}">  // Cookie sent automatically
+
+// SSE works:
+const sse = new EventSource('/api/sse/events', { withCredentials: true });
+
+// API calls work:
+await fetch('/api/v1/cameras', { credentials: 'include' });
 ```
 
 **Deferred:** Email verification and password reset via email will be added later when email service is configured.
@@ -350,8 +402,10 @@ CMD ["python", "-m", "app.worker.main"]
 ### Dashboard HTML Update
 - Keep embedded in `app/web/main.py` (no separate frontend)
 - Add login form before dashboard access
-- JWT stored in localStorage/cookies
-- Fetch API calls include Authorization header
+- JWT stored in HTTP-only cookie (set by server, not accessible to JS)
+- All fetch calls use `credentials: 'include'` to send cookie
+- MJPEG `<img>` tags work automatically (browser sends cookie)
+- SSE `EventSource` uses `{ withCredentials: true }`
 
 ---
 
@@ -485,8 +539,10 @@ Worker → PostgreSQL (event storage)
 
 ## Security Checklist
 
+- [ ] HTTP-only cookies for JWT (XSS protection)
+- [ ] Secure cookie flag (HTTPS only - Railway default)
+- [ ] SameSite=Strict cookie (CSRF protection)
 - [ ] JWT tokens with short expiry (60 min)
-- [ ] Refresh tokens in Redis (7 day expiry)
 - [ ] bcrypt with work factor 12
 - [ ] Rate limiting on auth endpoints
 - [ ] Fernet encryption for RTSP credentials

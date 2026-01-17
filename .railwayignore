@@ -1,0 +1,32 @@
+# Ignore local data files
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Ignore virtual environments
+venv/
+.venv/
+env/
+
+# Ignore IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Ignore git
+.git/
+
+# Ignore YOLO weights (downloaded at build time)
+*.pt
+
+# Ignore local config
+.env
+.env.local

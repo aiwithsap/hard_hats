@@ -174,7 +174,7 @@ class EventProcessor:
             return None
 
         # Determine severity
-        severity = Severity.CRITICAL if confidence > 0.8 else Severity.WARNING
+        severity = Severity.CRITICAL if confidence > 0.8 else Severity.MEDIUM
 
         # Create event
         event = Event(

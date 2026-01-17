@@ -38,7 +38,7 @@ class Event:
 
     # Violation details
     violation_type: Optional[ViolationType] = None
-    severity: Severity = Severity.WARNING
+    severity: Severity = Severity.MEDIUM
     confidence: float = 0.0
 
     # Bounding box (x1, y1, x2, y2)

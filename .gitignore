@@ -36,7 +36,7 @@ env/
 # Data files (large/generated)
 data/weights/*.pt
 data/weights/*.onnx
-data/videos/*.mp4
+# data/videos/*.mp4
 data/videos/*.avi
 data/videos/*.mkv
 data/db/*.db

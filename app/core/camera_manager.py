@@ -182,7 +182,7 @@ class CameraManager:
         cap = cv2.VideoCapture(source)
 
         if not cap.isOpened():
-            camera.status = CameraStatus.ERROR
+            camera.status = CameraStatus.error
             camera.last_error = f"Failed to open video source: {source}"
             print(f"[{camera.id}] ERROR: {camera.last_error}")
             self._show_error_frame(buffer, camera)
