@@ -39,7 +39,6 @@ class UserRole(str, PyEnum):
 
 class CameraStatus(str, PyEnum):
     """Camera operational status."""
-    # Lowercase names to match PostgreSQL enum values
     online = "online"
     offline = "offline"
     error = "error"
@@ -48,14 +47,12 @@ class CameraStatus(str, PyEnum):
 
 class SourceType(str, PyEnum):
     """Camera source type."""
-    # Lowercase names to match PostgreSQL enum values
     rtsp = "rtsp"
     file = "file"
 
 
 class DetectionMode(str, PyEnum):
     """Detection mode for camera."""
-    # Lowercase names to match PostgreSQL enum values
     ppe = "ppe"
     zone = "zone"
 

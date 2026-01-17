@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Data files (large/generated)
+data/weights/
+data/videos/
+data/db/
+data/thumbnails/
+data/config/
+
+# Playwright MCP screenshots
+.playwright-mcp/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# Documentation
+*.md
+docs/
+
+# Tests (not needed in production)
+tests/
+test_*.py
+*_test.py
+conftest.py
+
+# Local development files
+docker-compose*.yml
+Makefile

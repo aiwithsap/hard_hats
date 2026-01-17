@@ -226,6 +226,13 @@ DASHBOARD_HTML = """
                     </svg>
                     Live View
                 </a>
+                <a href="/cameras/setup" id="camera-setup-link" class="flex items-center gap-3 p-3 hover:bg-dark-700 rounded-lg text-gray-400 hover:text-white transition">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z"/>
+                        <path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z"/>
+                    </svg>
+                    Camera Setup
+                </a>
                 <a href="/docs" class="flex items-center gap-3 p-3 hover:bg-dark-700 rounded-lg text-gray-400 hover:text-white transition">
                     <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"/>
@@ -570,6 +577,13 @@ LIVE_HTML = """
                     </svg>
                     Live View
                 </a>
+                <a href="/cameras/setup" class="flex items-center gap-3 p-3 hover:bg-dark-700 rounded-lg text-gray-400 hover:text-white transition">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z"/>
+                        <path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z"/>
+                    </svg>
+                    Camera Setup
+                </a>
             </div>
 
             <div class="absolute bottom-4 left-4 right-4">
@@ -657,6 +671,368 @@ LIVE_HTML = """
                 case '3x2': grid.className = 'grid grid-cols-3 gap-6'; break;
             }
         });
+
+        async function logout() {
+            await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+            window.location.href = '/login';
+        }
+
+        fetchCameras();
+    </script>
+</body>
+</html>
+"""
+
+CAMERA_SETUP_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafetyVision - Camera Setup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { 900: '#0f0f1a', 800: '#1a1a2e', 700: '#252542', 600: '#2f2f4a' },
+                        accent: '#00d4aa',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0f0f1a; }
+        .sidebar { background-color: #1a1a2e; }
+        .camera-card { background-color: #1a1a2e; border: 1px solid #2f2f4a; }
+        .camera-card:hover { border-color: #00d4aa; }
+    </style>
+</head>
+<body class="text-white min-h-screen">
+    <div class="flex">
+        <nav class="sidebar w-64 min-h-screen p-4 fixed left-0 top-0">
+            <div class="flex items-center gap-3 mb-8">
+                <div class="w-10 h-10 bg-accent rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-dark-900" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                        <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"/>
+                    </svg>
+                </div>
+                <span class="text-xl font-semibold">SafetyVision</span>
+            </div>
+
+            <div class="space-y-2">
+                <a href="/dashboard" class="flex items-center gap-3 p-3 hover:bg-dark-700 rounded-lg text-gray-400 hover:text-white transition">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zm11-1a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"/>
+                    </svg>
+                    Dashboard
+                </a>
+                <a href="/live" class="flex items-center gap-3 p-3 hover:bg-dark-700 rounded-lg text-gray-400 hover:text-white transition">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"/>
+                    </svg>
+                    Live View
+                </a>
+                <a href="/cameras/setup" class="flex items-center gap-3 p-3 bg-dark-700 rounded-lg text-accent">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z"/>
+                        <path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z"/>
+                    </svg>
+                    Camera Setup
+                </a>
+            </div>
+
+            <div class="absolute bottom-4 left-4 right-4">
+                <button onclick="logout()" class="w-full flex items-center gap-3 p-3 hover:bg-dark-700 rounded-lg text-gray-400 hover:text-white transition">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4a1 1 0 00-1-1H3zm11 4a1 1 0 10-2 0v4a1 1 0 102 0V7z"/>
+                    </svg>
+                    Logout
+                </button>
+            </div>
+        </nav>
+
+        <main class="ml-64 flex-1 p-6">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h1 class="text-3xl font-bold">Camera Setup</h1>
+                    <p class="text-gray-400 mt-1">Configure and manage your camera feeds</p>
+                </div>
+                <button onclick="showAddModal()" class="bg-accent text-dark-900 px-4 py-2 rounded-lg font-medium hover:bg-accent/90 transition flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/>
+                    </svg>
+                    Add Camera
+                </button>
+            </div>
+
+            <div id="camera-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <p class="text-gray-500 col-span-full text-center py-8">Loading cameras...</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Camera Modal -->
+    <div id="camera-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
+        <div class="bg-dark-800 rounded-xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 id="modal-title" class="text-xl font-semibold mb-6">Add Camera</h2>
+
+            <div id="modal-error" class="hidden bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg mb-4"></div>
+
+            <input type="hidden" id="camera-id">
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-2">Camera Name</label>
+                    <input type="text" id="camera-name" class="w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 focus:border-accent focus:outline-none" placeholder="e.g., Entrance Camera">
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-400 mb-2">Zone</label>
+                    <input type="text" id="camera-zone" class="w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 focus:border-accent focus:outline-none" placeholder="e.g., Production, Warehouse">
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-400 mb-2">Source Type</label>
+                    <select id="source-type" class="w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 focus:border-accent focus:outline-none" onchange="toggleSourceFields()">
+                        <option value="rtsp">RTSP Stream</option>
+                        <option value="file">Demo/Placeholder</option>
+                    </select>
+                </div>
+
+                <div id="rtsp-fields">
+                    <div class="mb-4">
+                        <label class="block text-sm text-gray-400 mb-2">RTSP URL</label>
+                        <input type="text" id="rtsp-url" class="w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 focus:border-accent focus:outline-none" placeholder="rtsp://192.168.1.100:554/stream">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Username</label>
+                            <input type="text" id="rtsp-user" class="w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 focus:border-accent focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Password</label>
+                            <input type="password" id="rtsp-pass" class="w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 focus:border-accent focus:outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="file-fields" class="hidden">
+                    <label class="block text-sm text-gray-400 mb-2">Placeholder Video URL</label>
+                    <input type="text" id="placeholder-url" class="w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 focus:border-accent focus:outline-none" placeholder="https://example.com/demo.mp4">
+                    <p class="text-xs text-gray-500 mt-1">Leave empty to use a generated placeholder stream</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Target FPS</label>
+                        <select id="target-fps" class="w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 focus:border-accent focus:outline-none">
+                            <option value="0.5">0.5 FPS (Low CPU)</option>
+                            <option value="1">1 FPS (Balanced)</option>
+                            <option value="2">2 FPS (Responsive)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Detection Mode</label>
+                        <select id="detection-mode" class="w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 focus:border-accent focus:outline-none">
+                            <option value="ppe">PPE Detection</option>
+                            <option value="zone">Zone Monitoring</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-400 mb-2">Confidence Threshold</label>
+                    <input type="range" id="confidence" min="0.1" max="0.9" step="0.05" value="0.25" class="w-full" oninput="document.getElementById('conf-value').textContent = this.value">
+                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>More detections</span>
+                        <span id="conf-value">0.25</span>
+                        <span>Higher accuracy</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-4 mt-6">
+                <button onclick="hideModal()" class="flex-1 bg-dark-700 text-white px-4 py-3 rounded-lg font-medium hover:bg-dark-600 transition">Cancel</button>
+                <button onclick="saveCamera()" class="flex-1 bg-accent text-dark-900 px-4 py-3 rounded-lg font-medium hover:bg-accent/90 transition">Save Camera</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function api(url, options = {}) {
+            const response = await fetch(url, {
+                ...options,
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json', ...options.headers },
+            });
+            if (response.status === 401) {
+                window.location.href = '/login';
+                return null;
+            }
+            return response;
+        }
+
+        async function fetchCameras() {
+            try {
+                const response = await api('/api/v1/cameras');
+                const data = await response.json();
+                renderCameras(data.cameras);
+            } catch (e) {
+                console.error('Failed to fetch cameras:', e);
+            }
+        }
+
+        function renderCameras(cameras) {
+            const list = document.getElementById('camera-list');
+            if (cameras.length === 0) {
+                list.innerHTML = `
+                    <div class="col-span-full text-center py-12">
+                        <svg class="w-16 h-16 text-gray-600 mx-auto mb-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z"/>
+                            <path fill-rule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z"/>
+                        </svg>
+                        <p class="text-gray-400 mb-4">No cameras configured yet</p>
+                        <button onclick="showAddModal()" class="bg-accent text-dark-900 px-6 py-2 rounded-lg font-medium hover:bg-accent/90 transition">Add Your First Camera</button>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = cameras.map(cam => `
+                <div class="camera-card rounded-xl p-4 transition">
+                    <div class="flex items-start justify-between mb-3">
+                        <div>
+                            <h3 class="font-semibold">${cam.name}</h3>
+                            <p class="text-sm text-gray-400">${cam.zone}</p>
+                        </div>
+                        <span class="px-2 py-1 text-xs rounded ${cam.status === 'online' ? 'bg-green-500/20 text-green-400' : cam.status === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-gray-500/20 text-gray-400'}">
+                            ${cam.status}
+                        </span>
+                    </div>
+                    <div class="text-sm text-gray-400 space-y-1 mb-4">
+                        <p>Source: ${cam.source_type}</p>
+                        <p>Mode: ${cam.detection_mode}</p>
+                        <p>FPS: ${cam.target_fps}</p>
+                        ${cam.error_message ? `<p class="text-red-400">Error: ${cam.error_message}</p>` : ''}
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="editCamera('${cam.id}')" class="flex-1 bg-dark-700 text-white px-3 py-2 rounded-lg text-sm hover:bg-dark-600 transition">Edit</button>
+                        <button onclick="deleteCamera('${cam.id}')" class="bg-red-500/20 text-red-400 px-3 py-2 rounded-lg text-sm hover:bg-red-500/30 transition">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleSourceFields() {
+            const type = document.getElementById('source-type').value;
+            document.getElementById('rtsp-fields').classList.toggle('hidden', type !== 'rtsp');
+            document.getElementById('file-fields').classList.toggle('hidden', type !== 'file');
+        }
+
+        function showAddModal() {
+            document.getElementById('modal-title').textContent = 'Add Camera';
+            document.getElementById('camera-id').value = '';
+            document.getElementById('camera-name').value = '';
+            document.getElementById('camera-zone').value = '';
+            document.getElementById('source-type').value = 'rtsp';
+            document.getElementById('rtsp-url').value = '';
+            document.getElementById('rtsp-user').value = '';
+            document.getElementById('rtsp-pass').value = '';
+            document.getElementById('placeholder-url').value = '';
+            document.getElementById('target-fps').value = '0.5';
+            document.getElementById('detection-mode').value = 'ppe';
+            document.getElementById('confidence').value = '0.25';
+            document.getElementById('conf-value').textContent = '0.25';
+            toggleSourceFields();
+            document.getElementById('camera-modal').classList.remove('hidden');
+            document.getElementById('camera-modal').classList.add('flex');
+        }
+
+        async function editCamera(id) {
+            const response = await api(`/api/v1/cameras/${id}`);
+            const cam = await response.json();
+
+            document.getElementById('modal-title').textContent = 'Edit Camera';
+            document.getElementById('camera-id').value = cam.id;
+            document.getElementById('camera-name').value = cam.name;
+            document.getElementById('camera-zone').value = cam.zone;
+            document.getElementById('source-type').value = cam.source_type;
+            document.getElementById('rtsp-url').value = cam.rtsp_url || '';
+            document.getElementById('placeholder-url').value = cam.placeholder_video || '';
+            document.getElementById('target-fps').value = cam.target_fps.toString();
+            document.getElementById('detection-mode').value = cam.detection_mode;
+            document.getElementById('confidence').value = cam.confidence_threshold;
+            document.getElementById('conf-value').textContent = cam.confidence_threshold;
+            toggleSourceFields();
+            document.getElementById('camera-modal').classList.remove('hidden');
+            document.getElementById('camera-modal').classList.add('flex');
+        }
+
+        function hideModal() {
+            document.getElementById('camera-modal').classList.add('hidden');
+            document.getElementById('camera-modal').classList.remove('flex');
+            document.getElementById('modal-error').classList.add('hidden');
+        }
+
+        async function saveCamera() {
+            const id = document.getElementById('camera-id').value;
+            const sourceType = document.getElementById('source-type').value;
+
+            const data = {
+                name: document.getElementById('camera-name').value,
+                zone: document.getElementById('camera-zone').value,
+                source_type: sourceType,
+                target_fps: parseFloat(document.getElementById('target-fps').value),
+                detection_mode: document.getElementById('detection-mode').value,
+                confidence_threshold: parseFloat(document.getElementById('confidence').value),
+            };
+
+            if (sourceType === 'rtsp') {
+                data.rtsp_url = document.getElementById('rtsp-url').value;
+                const user = document.getElementById('rtsp-user').value;
+                const pass = document.getElementById('rtsp-pass').value;
+                if (user && pass) {
+                    data.credentials = `${user}:${pass}`;
+                }
+            } else {
+                data.use_placeholder = true;
+                data.placeholder_video = document.getElementById('placeholder-url').value || null;
+            }
+
+            try {
+                const url = id ? `/api/v1/cameras/${id}` : '/api/v1/cameras';
+                const method = id ? 'PUT' : 'POST';
+                const response = await api(url, { method, body: JSON.stringify(data) });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    document.getElementById('modal-error').textContent = error.detail || 'Failed to save camera';
+                    document.getElementById('modal-error').classList.remove('hidden');
+                    return;
+                }
+
+                hideModal();
+                fetchCameras();
+            } catch (e) {
+                document.getElementById('modal-error').textContent = 'Network error';
+                document.getElementById('modal-error').classList.remove('hidden');
+            }
+        }
+
+        async function deleteCamera(id) {
+            if (!confirm('Are you sure you want to delete this camera?')) return;
+
+            try {
+                await api(`/api/v1/cameras/${id}`, { method: 'DELETE' });
+                fetchCameras();
+            } catch (e) {
+                console.error('Failed to delete camera:', e);
+            }
+        }
 
         async function logout() {
             await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });

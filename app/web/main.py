@@ -13,7 +13,7 @@ from ..shared.db.database import init_db, close_db
 from ..shared.redis.client import close_redis
 from .api.v1 import router as api_router
 from .config import config
-from .dashboard import DASHBOARD_HTML, LOGIN_HTML, LIVE_HTML
+from .dashboard import DASHBOARD_HTML, LOGIN_HTML, LIVE_HTML, CAMERA_SETUP_HTML
 
 
 @asynccontextmanager
@@ -188,6 +188,16 @@ async def live_view(request: Request):
     if not token:
         return RedirectResponse(url="/login", status_code=302)
     return HTMLResponse(content=LIVE_HTML)
+
+
+@app.get("/cameras/setup", response_class=HTMLResponse)
+async def camera_setup(request: Request):
+    """Serve the camera setup page."""
+    # Check authentication
+    token = request.cookies.get(config.COOKIE_NAME)
+    if not token:
+        return RedirectResponse(url="/login", status_code=302)
+    return HTMLResponse(content=CAMERA_SETUP_HTML)
 
 
 def main():
