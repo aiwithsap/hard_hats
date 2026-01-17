@@ -13,7 +13,7 @@ from ..shared.db.models import Camera, CameraStatus, SourceType, DetectionMode
 from ..shared.db.repositories.cameras import GlobalCameraRepository
 from ..shared.redis.pubsub import get_frame_publisher, get_event_publisher
 from .config import config
-from .rtsp_handler import get_rtsp_handler, RTSPHandler
+from .rtsp_handler import get_rtsp_handler, RTSPHandler, get_test_pattern_capture
 from .vision import get_model, infer, annotate_frame
 from .frame_publisher import FrameProcessor
 from .event_processor import EventProcessor
@@ -374,6 +374,25 @@ class CameraManager:
                 context.cap.release()
                 context.cap = None
 
+    def _try_default_demo_fallback(
+        self, context: CameraContext
+    ) -> tuple[Optional[cv2.VideoCapture], Optional[str]]:
+        """Try the default demo video URL as a fallback."""
+        default_url = config.DEFAULT_DEMO_VIDEO_URL
+        if default_url:
+            print(f"[CAMERA:{context.name}] Trying default demo video: {default_url}")
+            cap, error = self.rtsp_handler.open_file(default_url)
+            if not error:
+                return cap, None
+            print(f"[CAMERA:{context.name}] Default demo video failed: {error}")
+
+        # Final fallback: test pattern
+        print(f"[CAMERA:{context.name}] Using test pattern")
+        return get_test_pattern_capture(
+            width=context.inference_width,
+            height=context.inference_height
+        ), None
+
     async def _connect_camera(
         self, context: CameraContext
     ) -> tuple[Optional[cv2.VideoCapture], Optional[str]]:
@@ -382,7 +401,9 @@ class CameraManager:
         if context.use_placeholder and context.placeholder_video:
             cap, error = self.rtsp_handler.open_file(context.placeholder_video)
             if error:
-                return None, f"Failed to open placeholder: {error}"
+                # Fallback to default demo video when placeholder fails
+                print(f"[CAMERA:{context.name}] Placeholder failed ({error}), trying default")
+                return self._try_default_demo_fallback(context)
             return cap, None
 
         # Try RTSP
@@ -395,12 +416,16 @@ class CameraManager:
             if error:
                 # Fallback to placeholder if available
                 if context.placeholder_video:
-                    print(f"[CAMERA:{context.name}] RTSP failed, using placeholder")
-                    cap, error = self.rtsp_handler.open_file(context.placeholder_video)
-                    if error:
-                        return None, f"RTSP and placeholder both failed"
-                    return cap, None
-                return None, error
+                    print(f"[CAMERA:{context.name}] RTSP failed, trying placeholder")
+                    cap, placeholder_error = self.rtsp_handler.open_file(context.placeholder_video)
+                    if not placeholder_error:
+                        return cap, None
+                    print(f"[CAMERA:{context.name}] Placeholder also failed")
+                else:
+                    print(f"[CAMERA:{context.name}] RTSP failed, no placeholder configured")
+
+                # Try default demo video
+                return self._try_default_demo_fallback(context)
 
             return cap, None
 
@@ -408,10 +433,14 @@ class CameraManager:
         if context.source_type == SourceType.file and context.placeholder_video:
             cap, error = self.rtsp_handler.open_file(context.placeholder_video)
             if error:
-                return None, error
+                # Fallback to default demo video
+                print(f"[CAMERA:{context.name}] Video source failed ({error})")
+                return self._try_default_demo_fallback(context)
             return cap, None
 
-        return None, "No valid source configured"
+        # No source configured, try default demo video
+        print(f"[CAMERA:{context.name}] No source configured")
+        return self._try_default_demo_fallback(context)
 
     async def _update_camera_status(
         self,

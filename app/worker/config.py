@@ -28,6 +28,12 @@ class WorkerConfig:
     THUMBNAIL_DIR: str = os.getenv("THUMBNAIL_DIR", "data/thumbnails")
     THUMBNAIL_QUALITY: int = int(os.getenv("THUMBNAIL_QUALITY", "85"))
 
+    # Demo video fallback
+    DEFAULT_DEMO_VIDEO_URL: str = os.getenv(
+        "DEFAULT_DEMO_VIDEO_URL",
+        "https://videos.pexels.com/video-files/2784460/2784460-hd_1920_1080_30fps.mp4"
+    )
+
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
