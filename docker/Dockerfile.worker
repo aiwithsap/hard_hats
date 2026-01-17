@@ -31,8 +31,8 @@ RUN pip install --no-cache-dir \
 
 # Clone the repo from GitHub to avoid file upload corruption
 ARG GITHUB_REPO=https://github.com/aiwithsap/hard_hats.git
-ARG COMMIT_SHA=main
-RUN git clone --depth 1 ${GITHUB_REPO} /tmp/repo && \
+RUN mkdir -p app && \
+    git clone --depth 1 ${GITHUB_REPO} /tmp/repo && \
     cp -r /tmp/repo/app/shared app/shared && \
     cp -r /tmp/repo/app/worker app/worker && \
     rm -rf /tmp/repo
