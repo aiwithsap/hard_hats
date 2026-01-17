@@ -28,10 +28,10 @@ class WorkerConfig:
     THUMBNAIL_DIR: str = os.getenv("THUMBNAIL_DIR", "data/thumbnails")
     THUMBNAIL_QUALITY: int = int(os.getenv("THUMBNAIL_QUALITY", "85"))
 
-    # Demo video fallback (Big Buck Bunny - public domain)
+    # Demo video fallback (Big Buck Bunny - public domain from archive.org)
     DEFAULT_DEMO_VIDEO_URL: str = os.getenv(
         "DEFAULT_DEMO_VIDEO_URL",
-        "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4"
+        "https://archive.org/download/BigBuckBunny_328/BigBuckBunny_512kb.mp4"
     )
 
     # Logging
