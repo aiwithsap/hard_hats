@@ -1,0 +1,44 @@
+{
+  "cameras": [
+    {
+      "id": "cam-001",
+      "name": "Warehouse Zone A",
+      "zone": "Warehouse",
+      "source": "data/videos/10817415-hd_1920_1080_30fps.mp4",
+      "position_x": 25,
+      "position_y": 30,
+      "start_offset": 0,
+      "playback_speed": 1.0
+    },
+    {
+      "id": "cam-002",
+      "name": "Production Line 1",
+      "zone": "Production",
+      "source": "data/videos/3192259-uhd_3840_2160_25fps.mp4",
+      "position_x": 60,
+      "position_y": 45,
+      "start_offset": 0,
+      "playback_speed": 1.0
+    },
+    {
+      "id": "cam-003",
+      "name": "Main Entrance",
+      "zone": "Common",
+      "source": "data/videos/5434223-hd_1920_1080_24fps.mp4",
+      "position_x": 85,
+      "position_y": 20,
+      "start_offset": 0,
+      "playback_speed": 1.0
+    },
+    {
+      "id": "cam-004",
+      "name": "Loading Dock",
+      "zone": "Warehouse",
+      "source": "data/videos/7147176-uhd_3840_2160_25fps.mp4",
+      "position_x": 40,
+      "position_y": 75,
+      "start_offset": 0,
+      "playback_speed": 1.0
+    }
+  ]
+}

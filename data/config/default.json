@@ -1,0 +1,8 @@
+{
+  "mode": "ppe",
+  "source": "data/videos/construction_workers.mp4",
+  "weights": "data/weights/best_yolo11s.pt",
+  "zone_polygon": [[100, 100], [500, 100], [500, 400], [100, 400]],
+  "imgsz": 640,
+  "conf": 0.25
+}

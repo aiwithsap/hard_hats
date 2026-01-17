@@ -1,0 +1,21 @@
+services:
+  demo:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8123:8123"
+    volumes:
+      # Mount config, db, output, thumbnails, and videos
+      - ./data/config:/app/data/config
+      - ./data/output:/app/data/output
+      - ./data/db:/app/data/db
+      - ./data/thumbnails:/app/data/thumbnails
+      - ./data/videos:/app/data/videos
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+    # Uncomment below for webcam access (Linux only):
+    # devices:
+    #   - "/dev/video0:/dev/video0"
