@@ -32,6 +32,8 @@ class FrameProcessor:
         camera_id: str,
         frame: np.ndarray,
         is_demo: bool = False,
+        fps: Optional[float] = None,
+        detection_count: Optional[int] = None,
     ) -> bool:
         """
         Encode and publish a frame to Redis.
@@ -55,8 +57,16 @@ class FrameProcessor:
             if not success:
                 return False
 
-            # Publish to Redis
-            await self.publisher.publish_frame(camera_id, encoded.tobytes())
+            # Publish to Redis (with metadata when available)
+            if fps is not None and detection_count is not None:
+                await self.publisher.publish_frame_with_metadata(
+                    camera_id,
+                    encoded.tobytes(),
+                    fps,
+                    detection_count,
+                )
+            else:
+                await self.publisher.publish_frame(camera_id, encoded.tobytes())
 
             return True
 

@@ -15,6 +15,20 @@ FRAME_CHANNEL_PREFIX = "frames:"
 EVENT_CHANNEL_PREFIX = "events:"
 
 
+def _decode_metadata(raw: Optional[dict]) -> dict:
+    """Decode Redis hash values into a string-keyed dict."""
+    if not raw:
+        return {}
+    decoded = {}
+    for key, value in raw.items():
+        if isinstance(key, bytes):
+            key = key.decode("utf-8", "ignore")
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", "ignore")
+        decoded[key] = value
+    return decoded
+
+
 class FramePublisher:
     """Publishes annotated frames to Redis."""
 
@@ -88,6 +102,11 @@ class FrameSubscriber:
     async def get_latest_frame(self, camera_id: str) -> Optional[bytes]:
         """Get the latest frame for a camera."""
         return await self.client.get(f"latest_frame:{camera_id}")
+
+    async def get_metadata(self, camera_id: str) -> dict:
+        """Get latest metadata (fps, detection_count) for a camera."""
+        raw = await self.client.hgetall(f"camera_meta:{camera_id}")
+        return _decode_metadata(raw)
 
     async def subscribe(self, camera_id: str) -> AsyncGenerator[bytes, None]:
         """

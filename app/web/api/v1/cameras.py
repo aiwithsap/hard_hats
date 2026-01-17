@@ -11,6 +11,7 @@ from ....shared.db.models import Camera, SourceType, DetectionMode, CameraStatus
 from ....shared.db.repositories.cameras import CameraRepository
 from ....shared.db.repositories.organizations import OrganizationRepository
 from ....shared.encryption import encrypt_credentials, is_encryption_configured
+from ....shared.redis.pubsub import get_frame_subscriber
 from ....shared.schemas.camera import (
     CameraCreate,
     CameraUpdate,
@@ -22,6 +23,47 @@ from ....shared.schemas.camera import (
 from ...auth.dependencies import CurrentUser, AdminUser
 
 router = APIRouter()
+
+
+def _parse_float(value: Optional[str], default: float = 0.0) -> float:
+    """Parse float from Redis metadata."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_int(value: Optional[str], default: int = 0) -> int:
+    """Parse int from Redis metadata."""
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+async def _get_runtime_stats(camera_ids: List[UUID]) -> dict:
+    """Fetch fps and detection counts from Redis for cameras."""
+    stats = {}
+    try:
+        subscriber = await get_frame_subscriber()
+    except Exception:
+        return stats
+
+    for camera_id in camera_ids:
+        try:
+            meta = await subscriber.get_metadata(str(camera_id))
+        except Exception:
+            meta = {}
+
+        if not meta:
+            continue
+
+        stats[camera_id] = {
+            "fps": _parse_float(meta.get("fps"), 0.0),
+            "detection_count": _parse_int(meta.get("detection_count"), 0),
+        }
+
+    return stats
 
 
 def camera_to_response(camera: Camera, fps: float = 0.0, detection_count: int = 0) -> CameraResponse:
@@ -72,9 +114,16 @@ async def list_cameras(
     else:
         cameras, _ = await camera_repo.get_all(limit=1000)
 
-    # TODO: Get real-time fps/detection count from Redis
+    runtime_stats = await _get_runtime_stats([c.id for c in cameras])
     return CameraListResponse(
-        cameras=[camera_to_response(c) for c in cameras],
+        cameras=[
+            camera_to_response(
+                c,
+                fps=runtime_stats.get(c.id, {}).get("fps", 0.0),
+                detection_count=runtime_stats.get(c.id, {}).get("detection_count", 0),
+            )
+            for c in cameras
+        ],
         total=len(cameras),
     )
 
@@ -155,7 +204,13 @@ async def get_camera(
             detail="Camera not found",
         )
 
-    return camera_to_response(camera)
+    runtime_stats = await _get_runtime_stats([camera.id])
+    stats = runtime_stats.get(camera.id, {})
+    return camera_to_response(
+        camera,
+        fps=stats.get("fps", 0.0),
+        detection_count=stats.get("detection_count", 0),
+    )
 
 
 @router.patch("/{camera_id}", response_model=CameraResponse)

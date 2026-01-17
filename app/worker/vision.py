@@ -1,6 +1,8 @@
 """Vision module for YOLO inference (worker version)."""
 
 from typing import List, Dict, Any, Optional, Tuple
+from pathlib import Path
+import shutil
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -45,10 +47,45 @@ COLOR_WHITE = (255, 255, 255)
 _model: Optional[YOLO] = None
 
 
+def ensure_weights(weights_path: str) -> None:
+    """Ensure model weights exist locally; download if missing."""
+    weights_file = Path(weights_path)
+    if weights_file.exists():
+        return
+
+    print(f"[VISION] Weights not found at {weights_file}, downloading...")
+    weights_file.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from huggingface_hub import hf_hub_download
+    except Exception as exc:
+        raise RuntimeError(
+            "huggingface_hub is required to download model weights"
+        ) from exc
+
+    hf_hub_download(
+        repo_id="yihong1120/Construction-Hazard-Detection-YOLO11",
+        filename="models/pt/best_yolo11s.pt",
+        local_dir=str(weights_file.parent),
+        local_dir_use_symlinks=False,
+    )
+
+    nested = weights_file.parent / "models" / "pt" / "best_yolo11s.pt"
+    if nested.exists() and nested != weights_file:
+        shutil.move(str(nested), str(weights_file))
+        shutil.rmtree(weights_file.parent / "models", ignore_errors=True)
+
+    if not weights_file.exists():
+        raise RuntimeError(f"Downloaded weights not found at {weights_file}")
+
+    print(f"[VISION] Weights ready at: {weights_file}")
+
+
 def load_model(weights_path: str = config.WEIGHTS_PATH) -> YOLO:
     """Load YOLO model from weights file."""
     global _model
     if _model is None:
+        ensure_weights(weights_path)
         print(f"[VISION] Loading YOLO model from: {weights_path}")
         _model = YOLO(weights_path)
     return _model

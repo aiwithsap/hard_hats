@@ -52,6 +52,7 @@ class CameraContext:
     error_message: Optional[str] = None
     frames_processed: int = 0
     last_frame_time: float = 0
+    fps_ema: float = 0.0
     task: Optional[asyncio.Task] = None
 
 
@@ -177,12 +178,11 @@ class CameraManager:
         # Get zone polygon (stored as JSON in database, automatically parsed)
         zone_polygon = db_camera.zone_polygon
 
-        # Force better defaults for performance on CPU
-        # Clamp inference size to max 400x400 for faster processing
+        # Clamp inference size to max 400x400 for faster CPU processing
         inference_width = min(db_camera.inference_width, 400)
         inference_height = min(db_camera.inference_height, 400)
-        # Ensure at least 5 FPS for reasonable responsiveness
-        target_fps = max(db_camera.target_fps, 5.0)
+        # Respect user's FPS setting (0.5 FPS is intentional to save compute)
+        target_fps = db_camera.target_fps
 
         context = CameraContext(
             camera_id=db_camera.id,
@@ -332,6 +332,7 @@ class CameraManager:
                     conf=context.confidence_threshold,
                     imgsz=context.inference_width,
                 )
+                detection_count = len(detections)
 
                 # Process events (violations)
                 await self.event_processor.process_detections(
@@ -352,14 +353,28 @@ class CameraManager:
                     polygon=polygon,
                 )
 
+                # Calculate FPS (exponential moving average)
+                fps = 0.0
+                prev_time = context.last_frame_time
+                context.last_frame_time = loop_start
+                if prev_time > 0:
+                    delta = max(loop_start - prev_time, 1e-6)
+                    instant_fps = 1.0 / delta
+                    if context.fps_ema <= 0:
+                        context.fps_ema = instant_fps
+                    else:
+                        context.fps_ema = (context.fps_ema * 0.8) + (instant_fps * 0.2)
+                    fps = context.fps_ema
+
                 # Publish frame
                 await self.frame_processor.publish_frame(
                     camera_id=str(camera_id),
                     frame=annotated,
+                    fps=fps,
+                    detection_count=detection_count,
                 )
 
                 context.frames_processed += 1
-                context.last_frame_time = loop_start
 
                 # Maintain target FPS
                 elapsed = asyncio.get_event_loop().time() - loop_start
