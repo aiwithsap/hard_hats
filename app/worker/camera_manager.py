@@ -177,6 +177,13 @@ class CameraManager:
         # Get zone polygon (stored as JSON in database, automatically parsed)
         zone_polygon = db_camera.zone_polygon
 
+        # Force better defaults for performance on CPU
+        # Clamp inference size to max 400x400 for faster processing
+        inference_width = min(db_camera.inference_width, 400)
+        inference_height = min(db_camera.inference_height, 400)
+        # Ensure at least 5 FPS for reasonable responsiveness
+        target_fps = max(db_camera.target_fps, 5.0)
+
         context = CameraContext(
             camera_id=db_camera.id,
             organization_id=db_camera.organization_id,
@@ -186,9 +193,9 @@ class CameraManager:
             credentials_encrypted=db_camera.credentials_encrypted,
             placeholder_video=db_camera.placeholder_video,
             use_placeholder=db_camera.use_placeholder,
-            inference_width=db_camera.inference_width,
-            inference_height=db_camera.inference_height,
-            target_fps=db_camera.target_fps,
+            inference_width=inference_width,
+            inference_height=inference_height,
+            target_fps=target_fps,
             detection_mode=db_camera.detection_mode,
             zone_polygon=zone_polygon,
             confidence_threshold=db_camera.confidence_threshold,

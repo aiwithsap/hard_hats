@@ -233,9 +233,9 @@ class RTSPHandler:
                 print(f"[RTSP_HANDLER] Using cached video: {cache_path}")
                 return str(cache_path), None
 
-            # Download video
+            # Download video (5 min timeout for large files)
             print(f"[RTSP_HANDLER] Downloading video from: {url}")
-            response = requests.get(url, stream=True, timeout=60)
+            response = requests.get(url, stream=True, timeout=300)
             response.raise_for_status()
 
             # Save to cache
