@@ -31,7 +31,7 @@ RUN pip install --no-cache-dir \
 
 # Clone the repo from GitHub to avoid file upload corruption
 # CACHEBUST forces fresh clone when code changes
-ARG CACHEBUST=20260117_2217
+ARG CACHEBUST=20260117_2226
 ARG GITHUB_REPO=https://github.com/aiwithsap/hard_hats.git
 RUN echo "Cache bust: ${CACHEBUST}" && \
     mkdir -p app && \
