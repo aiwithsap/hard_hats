@@ -1,18 +1,46 @@
 """Camera manager for multi-camera orchestration."""
 
+import hashlib
 import json
 import threading
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
 import cv2
 import numpy as np
+import requests
 
 from ..models.camera import Camera, CameraStatus
 from ..config import get_config
 from ..vision import load_model, infer, annotate_frame
 from .frame_buffer import FrameBuffer
 from .event_processor import get_event_processor
+
+
+def download_video_to_cache(url: str, cache_dir: str = "data/videos") -> str:
+    """Download remote video to local cache, return local path."""
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+    # Extract extension, stripping query params
+    ext = Path(url.split("?")[0]).suffix or ".mp4"
+    cache_path = Path(cache_dir) / f"cached_{url_hash}{ext}"
+
+    if cache_path.exists():
+        print(f"[CameraManager] Using cached video: {cache_path}")
+        return str(cache_path)
+
+    print(f"[CameraManager] Downloading video from {url}...")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    response = requests.get(url, stream=True, timeout=300)
+    response.raise_for_status()
+
+    with open(cache_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+    print(f"[CameraManager] Downloaded to {cache_path}")
+    return str(cache_path)
 
 
 class CameraManager:
@@ -175,7 +203,19 @@ class CameraManager:
 
         # Open video source
         source = camera.source
-        if source.isdigit():
+
+        # Download remote URLs to local cache for better performance
+        if isinstance(source, str) and source.startswith(("http://", "https://")):
+            try:
+                source = download_video_to_cache(source)
+            except Exception as e:
+                camera.status = CameraStatus.error
+                camera.last_error = f"Failed to download video: {e}"
+                print(f"[{camera.id}] ERROR: {camera.last_error}")
+                self._show_error_frame(buffer, camera)
+                return
+
+        if isinstance(source, str) and source.isdigit():
             source = int(source)
 
         print(f"[{camera.id}] Opening video source: {source}")
@@ -210,6 +250,9 @@ class CameraManager:
                 continue
 
             frame_number += 1
+
+            # Downscale to 400x400 for performance
+            frame = cv2.resize(frame, (400, 400))
 
             # Apply demo mode transforms
             frame = self._apply_transforms(frame, camera)
