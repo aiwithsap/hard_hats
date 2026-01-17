@@ -6,7 +6,7 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for OpenCV and video processing
+# Install system dependencies for OpenCV, video processing, and git
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender-dev \
     ffmpeg \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies inline (avoiding file upload corruption)
@@ -28,18 +29,16 @@ RUN pip install --no-cache-dir \
     pydantic>=2.5.3 \
     pydantic-settings>=2.1.0
 
-# Copy shared code
-COPY app/shared/ app/shared/
-
-# Copy worker service code
-COPY app/worker/ app/worker/
+# Clone the repo from GitHub to avoid file upload corruption
+ARG GITHUB_REPO=https://github.com/aiwithsap/hard_hats.git
+ARG COMMIT_SHA=main
+RUN git clone --depth 1 ${GITHUB_REPO} /tmp/repo && \
+    cp -r /tmp/repo/app/shared app/shared && \
+    cp -r /tmp/repo/app/worker app/worker && \
+    rm -rf /tmp/repo
 
 # Create directories for runtime data
 RUN mkdir -p data/weights data/thumbnails data/videos
-
-# Pre-download YOLO weights at build time (optional, reduces first-run latency)
-# Uncomment if you want weights baked into the image
-# RUN python -c "from ultralytics import YOLO; YOLO('yolo11n.pt')"
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
