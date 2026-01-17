@@ -1,14 +1,21 @@
 """RTSP stream handler with retry logic and health checks."""
 
 import asyncio
+import hashlib
+import os
 import time
+from pathlib import Path
 from typing import Optional, Tuple
 from dataclasses import dataclass
 import cv2
 import numpy as np
+import requests
 
 from ..shared.encryption import decrypt_credentials, safe_decrypt
 from .config import config
+
+# Cache directory for downloaded videos
+VIDEO_CACHE_DIR = Path("data/videos")
 
 
 @dataclass
@@ -176,15 +183,22 @@ class RTSPHandler:
 
     def open_file(self, path: str) -> Tuple[Optional[cv2.VideoCapture], Optional[str]]:
         """
-        Open a video file.
+        Open a video file or URL.
 
         Args:
-            path: Path to video file
+            path: Path to video file or HTTP/HTTPS URL
 
         Returns:
             Tuple of (VideoCapture or None, error message or None)
         """
         try:
+            # Check if path is a URL
+            if path.startswith("http://") or path.startswith("https://"):
+                local_path, error = self._download_video(path)
+                if error:
+                    return None, error
+                path = local_path
+
             cap = cv2.VideoCapture(path)
 
             if not cap.isOpened():
@@ -194,6 +208,114 @@ class RTSPHandler:
 
         except Exception as e:
             return None, str(e)
+
+    def _download_video(self, url: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Download a video from URL to local cache.
+
+        Args:
+            url: HTTP/HTTPS URL to video
+
+        Returns:
+            Tuple of (local path or None, error message or None)
+        """
+        try:
+            # Create cache directory
+            VIDEO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+            # Generate cache filename from URL hash
+            url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+            ext = os.path.splitext(url.split("?")[0])[-1] or ".mp4"
+            cache_path = VIDEO_CACHE_DIR / f"cached_{url_hash}{ext}"
+
+            # Check if already cached
+            if cache_path.exists() and cache_path.stat().st_size > 0:
+                print(f"[RTSP_HANDLER] Using cached video: {cache_path}")
+                return str(cache_path), None
+
+            # Download video
+            print(f"[RTSP_HANDLER] Downloading video from: {url}")
+            response = requests.get(url, stream=True, timeout=60)
+            response.raise_for_status()
+
+            # Save to cache
+            with open(cache_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+            print(f"[RTSP_HANDLER] Downloaded video to: {cache_path}")
+            return str(cache_path), None
+
+        except requests.RequestException as e:
+            return None, f"Failed to download video: {e}"
+        except Exception as e:
+            return None, f"Error caching video: {e}"
+
+
+class TestPatternCapture:
+    """
+    A cv2.VideoCapture-like class that generates test pattern frames.
+    Used as a fallback when no video source is available.
+    """
+
+    def __init__(self, width: int = 640, height: int = 480, fps: float = 0.5):
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.frame_count = 0
+        self._opened = True
+
+    def isOpened(self) -> bool:
+        return self._opened
+
+    def read(self) -> Tuple[bool, Optional[np.ndarray]]:
+        """Generate a test pattern frame."""
+        if not self._opened:
+            return False, None
+
+        # Create a frame with gradient background
+        frame = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+
+        # Add color gradient
+        for y in range(self.height):
+            color_val = int((y / self.height) * 128) + 64
+            frame[y, :, 0] = color_val  # Blue channel
+            frame[y, :, 2] = 192 - color_val  # Red channel
+
+        # Add "DEMO MODE" text
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        text = "DEMO MODE"
+        text_size = cv2.getTextSize(text, font, 1.5, 3)[0]
+        text_x = (self.width - text_size[0]) // 2
+        text_y = (self.height + text_size[1]) // 2
+        cv2.putText(frame, text, (text_x, text_y), font, 1.5, (255, 255, 255), 3)
+
+        # Add frame counter
+        counter_text = f"Frame: {self.frame_count}"
+        cv2.putText(frame, counter_text, (10, 30), font, 0.7, (200, 200, 200), 2)
+
+        # Add instructions
+        info_text = "Configure camera in Camera Setup"
+        info_size = cv2.getTextSize(info_text, font, 0.6, 1)[0]
+        cv2.putText(frame, info_text, ((self.width - info_size[0]) // 2, self.height - 20),
+                    font, 0.6, (180, 180, 180), 1)
+
+        self.frame_count += 1
+        return True, frame
+
+    def get(self, prop_id: int) -> float:
+        """Get capture property."""
+        if prop_id == cv2.CAP_PROP_FRAME_WIDTH:
+            return float(self.width)
+        elif prop_id == cv2.CAP_PROP_FRAME_HEIGHT:
+            return float(self.height)
+        elif prop_id == cv2.CAP_PROP_FPS:
+            return self.fps
+        return 0.0
+
+    def release(self) -> None:
+        """Release the capture."""
+        self._opened = False
 
 
 # Global handler instance
@@ -206,3 +328,8 @@ def get_rtsp_handler() -> RTSPHandler:
     if _rtsp_handler is None:
         _rtsp_handler = RTSPHandler()
     return _rtsp_handler
+
+
+def get_test_pattern_capture(width: int = 640, height: int = 480) -> TestPatternCapture:
+    """Get a test pattern capture for demo mode."""
+    return TestPatternCapture(width=width, height=height)
