@@ -22,7 +22,7 @@ COPY requirements-web.txt .
 RUN pip install --no-cache-dir -r requirements-web.txt
 
 # Cache bust - forces fresh copy of source files
-ARG CACHEBUST=2
+ARG CACHEBUST=3
 
 # Copy shared code
 COPY app/shared/ app/shared/
