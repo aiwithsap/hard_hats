@@ -52,6 +52,8 @@ class CameraContext:
     error_message: Optional[str] = None
     frames_processed: int = 0
     last_frame_time: float = 0
+    last_infer_time: float = 0.0
+    last_detections: List[Dict[str, Any]] = field(default_factory=list)
     fps_ema: float = 0.0
     task: Optional[asyncio.Task] = None
 
@@ -290,10 +292,19 @@ class CameraManager:
                 camera_id, CameraStatus.online, None
             )
 
-            # Calculate frame interval
-            frame_interval = 1.0 / context.target_fps
+            def get_stream_fps(capture: cv2.VideoCapture) -> float:
+                fps = capture.get(cv2.CAP_PROP_FPS)
+                if not fps or fps < 1.0:
+                    return 15.0
+                return fps
 
-            print(f"[CAMERA:{context.name}] Started streaming at {context.target_fps} FPS")
+            stream_fps = get_stream_fps(cap)
+            stream_interval = 1.0 / stream_fps
+
+            print(
+                f"[CAMERA:{context.name}] Started streaming at "
+                f"{stream_fps:.1f} FPS (inference {context.target_fps} FPS)"
+            )
 
             while self._running and context.state == CameraState.STREAMING:
                 loop_start = asyncio.get_event_loop().time()
@@ -316,6 +327,8 @@ class CameraManager:
                         break
 
                     context.cap = cap
+                    stream_fps = get_stream_fps(cap)
+                    stream_interval = 1.0 / stream_fps
                     continue
 
                 # Resize for inference
@@ -325,24 +338,30 @@ class CameraManager:
                         (context.inference_width, context.inference_height)
                     )
 
-                # Run inference
-                detections = infer(
-                    self.model,
-                    frame,
-                    conf=context.confidence_threshold,
-                    imgsz=context.inference_width,
-                )
-                detection_count = len(detections)
+                infer_interval = 1.0 / max(context.target_fps, 0.1)
+                should_infer = (loop_start - context.last_infer_time) >= infer_interval
 
-                # Process events (violations)
-                await self.event_processor.process_detections(
-                    camera_id=camera_id,
-                    organization_id=context.organization_id,
-                    detections=detections,
-                    mode=context.detection_mode.value,
-                    polygon=context.zone_polygon,
-                    frame=frame,
-                )
+                if should_infer:
+                    detections = infer(
+                        self.model,
+                        frame,
+                        conf=context.confidence_threshold,
+                        imgsz=context.inference_width,
+                    )
+                    context.last_detections = detections
+                    context.last_infer_time = loop_start
+
+                    await self.event_processor.process_detections(
+                        camera_id=camera_id,
+                        organization_id=context.organization_id,
+                        detections=detections,
+                        mode=context.detection_mode.value,
+                        polygon=context.zone_polygon,
+                        frame=frame,
+                    )
+
+                detections = context.last_detections
+                detection_count = len(detections)
 
                 # Annotate frame
                 polygon = context.zone_polygon if context.detection_mode == DetectionMode.zone else None
@@ -376,9 +395,9 @@ class CameraManager:
 
                 context.frames_processed += 1
 
-                # Maintain target FPS
+                # Maintain stream FPS
                 elapsed = asyncio.get_event_loop().time() - loop_start
-                sleep_time = max(0, frame_interval - elapsed)
+                sleep_time = max(0, stream_interval - elapsed)
                 if sleep_time > 0:
                     await asyncio.sleep(sleep_time)
 
