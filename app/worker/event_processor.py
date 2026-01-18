@@ -291,7 +291,6 @@ class EventProcessor:
         thumbnail_path: Optional[str],
     ) -> None:
         """Publish event to Redis for SSE consumption."""
-        import json
         from datetime import datetime
 
         event_data = {
@@ -305,9 +304,9 @@ class EventProcessor:
             "created_at": datetime.utcnow().isoformat(),
         }
 
-        await self.event_publisher.publish(
+        await self.event_publisher.publish_event(
             str(organization_id),
-            json.dumps(event_data),
+            event_data,
         )
 
     async def close(self) -> None:
