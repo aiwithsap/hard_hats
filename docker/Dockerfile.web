@@ -6,33 +6,47 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (including OpenCV deps and bcrypt build deps)
+# Install system dependencies (including OpenCV deps, bcrypt build deps, and git)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libgl1 \
     libglib2.0-0 \
     libffi-dev \
     gcc \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for caching
-COPY requirements-web.txt .
+# Install Python dependencies inline (avoiding file upload corruption)
+RUN pip install --no-cache-dir \
+    'fastapi>=0.109.0' \
+    'uvicorn[standard]>=0.27.0' \
+    'python-multipart>=0.0.6' \
+    'sqlalchemy[asyncio]>=2.0.25' \
+    'asyncpg>=0.29.0' \
+    'alembic>=1.13.1' \
+    'redis>=5.0.1' \
+    'python-jose[cryptography]>=3.3.0' \
+    'bcrypt>=4.0.0' \
+    'pydantic>=2.5.3' \
+    'pydantic-settings>=2.1.0' \
+    'email-validator>=2.1.0' \
+    'sse-starlette>=1.8.2' \
+    'opencv-python-headless>=4.9.0' \
+    'numpy>=1.26.0' \
+    'httpx>=0.26.0'
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements-web.txt
-
-# Cache bust - forces fresh copy of source files
-ARG CACHEBUST=3
-
-# Copy shared code
-COPY app/shared/ app/shared/
-
-# Copy web service code
-COPY app/web/ app/web/
-
-# Copy Alembic for migrations
-COPY alembic/ alembic/
-COPY alembic.ini .
+# Clone the repo from GitHub to avoid file upload corruption
+# CACHEBUST forces fresh clone when code changes
+ARG CACHEBUST=20260118_0200
+ARG GITHUB_REPO=https://github.com/aiwithsap/hard_hats.git
+RUN echo "Cache bust: ${CACHEBUST}" && \
+    mkdir -p app && \
+    git clone --depth 1 ${GITHUB_REPO} /tmp/repo && \
+    cp -r /tmp/repo/app/shared app/shared && \
+    cp -r /tmp/repo/app/web app/web && \
+    cp -r /tmp/repo/alembic alembic && \
+    cp /tmp/repo/alembic.ini . && \
+    rm -rf /tmp/repo
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
