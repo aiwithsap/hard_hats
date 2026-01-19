@@ -1,4 +1,7 @@
-"""Main web application - FastAPI server with auth, API, and dashboard."""
+"""Main web application - FastAPI server with auth, API, and dashboard.
+
+Build version: 20260119-0637
+"""
 
 import os
 from pathlib import Path
