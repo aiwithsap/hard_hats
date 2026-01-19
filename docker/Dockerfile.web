@@ -1,7 +1,12 @@
 # Dockerfile for Hard Hats Detection - Web Service
 # Serves FastAPI API, authentication, SSE, and MJPEG proxy
+# Build version: 20260119-v2
 
 FROM python:3.11-slim
+
+# Force cache invalidation for code updates
+ARG BUILD_VERSION=20260119_0627
+RUN echo "Build version: ${BUILD_VERSION}"
 
 # Set working directory
 WORKDIR /app
