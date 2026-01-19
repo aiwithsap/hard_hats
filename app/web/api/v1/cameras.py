@@ -85,6 +85,7 @@ def camera_to_response(camera: Camera, fps: float = 0.0, detection_count: int = 
         detection_mode=camera.detection_mode.value,
         zone_polygon=camera.zone_polygon,
         is_active=camera.is_active,
+        inference_enabled=camera.inference_enabled,
         status=camera.status.value,
         last_seen=camera.last_seen,
         error_message=camera.error_message,
