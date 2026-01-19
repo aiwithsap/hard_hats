@@ -35,6 +35,7 @@ RUN pip install --no-cache-dir \
     'httpx>=0.26.0'
 
 # Copy application code from local files
+# Cache bust: 20260119_0620
 COPY app/shared app/shared
 COPY app/web app/web
 COPY alembic alembic
