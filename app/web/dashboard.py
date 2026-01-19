@@ -1024,7 +1024,7 @@ CAMERA_SETUP_HTML = """
 
             try {
                 const url = id ? `/api/v1/cameras/${id}` : '/api/v1/cameras';
-                const method = id ? 'PUT' : 'POST';
+                const method = id ? 'PATCH' : 'POST';
                 const response = await api(url, { method, body: JSON.stringify(data) });
 
                 if (!response.ok) {

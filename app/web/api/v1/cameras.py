@@ -274,6 +274,8 @@ async def update_camera(
         camera.zone_polygon = request.zone_polygon
     if request.is_active is not None:
         camera.is_active = request.is_active
+    if request.inference_enabled is not None:
+        camera.inference_enabled = request.inference_enabled
 
     await camera_repo.update(camera)
     return camera_to_response(camera)
