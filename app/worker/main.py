@@ -1,4 +1,7 @@
-"""Worker service entry point for video processing and YOLO inference."""
+"""Worker service entry point for video processing and YOLO inference.
+
+Version: 2.1.0 - Added per-camera inference toggle support
+"""
 
 import asyncio
 import signal
