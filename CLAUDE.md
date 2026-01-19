@@ -22,6 +22,11 @@ pip install -r requirements-worker-new.txt
 python -m app.worker.main
 ```
 
+## Deployment (Railway)
+
+- Push changes to GitHub and let Railway auto-deploy.
+- Do not run Railway CLI or `railway up` commands.
+
 ## Architecture
 
 **Services**

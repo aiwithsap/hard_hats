@@ -6,14 +6,13 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (including OpenCV deps, bcrypt build deps, and git)
+# Install system dependencies (including OpenCV deps, bcrypt build deps)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libgl1 \
     libglib2.0-0 \
     libffi-dev \
     gcc \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies inline (avoiding file upload corruption)
@@ -35,18 +34,11 @@ RUN pip install --no-cache-dir \
     'numpy>=1.26.0' \
     'httpx>=0.26.0'
 
-# Clone the repo from GitHub to avoid file upload corruption
-# CACHEBUST forces fresh clone when code changes
-ARG CACHEBUST=20260119_inference_toggle
-ARG GITHUB_REPO=https://github.com/aiwithsap/hard_hats.git
-RUN echo "Cache bust: ${CACHEBUST}" && \
-    mkdir -p app && \
-    git clone --depth 1 ${GITHUB_REPO} /tmp/repo && \
-    cp -r /tmp/repo/app/shared app/shared && \
-    cp -r /tmp/repo/app/web app/web && \
-    cp -r /tmp/repo/alembic alembic && \
-    cp /tmp/repo/alembic.ini . && \
-    rm -rf /tmp/repo
+# Copy application code from local files
+COPY app/shared app/shared
+COPY app/web app/web
+COPY alembic alembic
+COPY alembic.ini .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
