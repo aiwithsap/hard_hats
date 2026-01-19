@@ -33,6 +33,30 @@ async def lifespan(app: FastAPI):
     print("\n[SETUP] Initializing database connection...")
     await init_db()
 
+    # Run inline migrations (for columns that Alembic might miss)
+    print("[SETUP] Checking schema migrations...")
+    try:
+        from sqlalchemy import text
+        from ..shared.db.database import async_session_factory
+        async with async_session_factory() as session:
+            # Add inference_enabled column if missing
+            result = await session.execute(text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'cameras' AND column_name = 'inference_enabled'
+            """))
+            if not result.fetchone():
+                print("[SETUP] Adding inference_enabled column to cameras...")
+                await session.execute(text("""
+                    ALTER TABLE cameras
+                    ADD COLUMN inference_enabled BOOLEAN NOT NULL DEFAULT true
+                """))
+                await session.commit()
+                print("[SETUP] Column added successfully")
+            else:
+                print("[SETUP] Schema up to date")
+    except Exception as e:
+        print(f"[WARN] Schema migration check failed: {e}")
+
     # Check Redis
     print("[SETUP] Checking Redis connection...")
     try:
