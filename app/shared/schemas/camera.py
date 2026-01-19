@@ -34,6 +34,9 @@ class CameraCreate(BaseModel):
     detection_mode: str = Field(default="ppe", pattern="^(ppe|zone)$")
     zone_polygon: Optional[List[List[int]]] = None  # [[x,y], ...]
 
+    # Inference control
+    inference_enabled: bool = True
+
 
 class CameraUpdate(BaseModel):
     """Update camera request schema."""
@@ -62,6 +65,9 @@ class CameraUpdate(BaseModel):
     detection_mode: Optional[str] = Field(None, pattern="^(ppe|zone)$")
     zone_polygon: Optional[List[List[int]]] = None
 
+    # Inference control
+    inference_enabled: Optional[bool] = None
+
     # Status
     is_active: Optional[bool] = None
 
@@ -86,6 +92,8 @@ class CameraResponse(BaseModel):
 
     detection_mode: str
     zone_polygon: Optional[List[List[int]]] = None
+
+    inference_enabled: bool
 
     is_active: bool
     status: str

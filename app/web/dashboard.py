@@ -853,6 +853,17 @@ CAMERA_SETUP_HTML = """
                         <span>Higher accuracy</span>
                     </div>
                 </div>
+
+                <div class="flex items-center justify-between py-2">
+                    <div>
+                        <label class="block text-sm text-gray-400">AI Inference</label>
+                        <p class="text-xs text-gray-500">When disabled, video streams without AI analysis</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="inference-enabled" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-dark-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-accent after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                    </label>
+                </div>
             </div>
 
             <div class="flex gap-4 mt-6">
@@ -909,14 +920,18 @@ CAMERA_SETUP_HTML = """
                             <h3 class="font-semibold">${cam.name}</h3>
                             <p class="text-sm text-gray-400">${cam.zone}</p>
                         </div>
-                        <span class="px-2 py-1 text-xs rounded ${cam.status === 'online' ? 'bg-green-500/20 text-green-400' : cam.status === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-gray-500/20 text-gray-400'}">
-                            ${cam.status}
-                        </span>
+                        <div class="flex gap-2">
+                            ${cam.inference_enabled === false ? '<span class="px-2 py-1 text-xs rounded bg-yellow-500/20 text-yellow-400">AI Off</span>' : ''}
+                            <span class="px-2 py-1 text-xs rounded ${cam.status === 'online' ? 'bg-green-500/20 text-green-400' : cam.status === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-gray-500/20 text-gray-400'}">
+                                ${cam.status}
+                            </span>
+                        </div>
                     </div>
                     <div class="text-sm text-gray-400 space-y-1 mb-4">
                         <p>Source: ${cam.source_type}</p>
                         <p>Mode: ${cam.detection_mode}</p>
                         <p>FPS: ${cam.target_fps}</p>
+                        <p>AI: ${cam.inference_enabled === false ? 'Disabled' : 'Enabled'}</p>
                         ${cam.error_message ? `<p class="text-red-400">Error: ${cam.error_message}</p>` : ''}
                     </div>
                     <div class="flex gap-2">
@@ -947,6 +962,7 @@ CAMERA_SETUP_HTML = """
             document.getElementById('detection-mode').value = 'ppe';
             document.getElementById('confidence').value = '0.25';
             document.getElementById('conf-value').textContent = '0.25';
+            document.getElementById('inference-enabled').checked = true;
             toggleSourceFields();
             document.getElementById('camera-modal').classList.remove('hidden');
             document.getElementById('camera-modal').classList.add('flex');
@@ -967,6 +983,7 @@ CAMERA_SETUP_HTML = """
             document.getElementById('detection-mode').value = cam.detection_mode;
             document.getElementById('confidence').value = cam.confidence_threshold;
             document.getElementById('conf-value').textContent = cam.confidence_threshold;
+            document.getElementById('inference-enabled').checked = cam.inference_enabled !== false;
             toggleSourceFields();
             document.getElementById('camera-modal').classList.remove('hidden');
             document.getElementById('camera-modal').classList.add('flex');
@@ -989,6 +1006,7 @@ CAMERA_SETUP_HTML = """
                 target_fps: parseFloat(document.getElementById('target-fps').value),
                 detection_mode: document.getElementById('detection-mode').value,
                 confidence_threshold: parseFloat(document.getElementById('confidence').value),
+                inference_enabled: document.getElementById('inference-enabled').checked,
             };
 
             if (sourceType === 'rtsp') {

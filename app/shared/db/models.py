@@ -214,6 +214,9 @@ class Camera(Base):
     )
     zone_polygon: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
+    # Inference control
+    inference_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[CameraStatus] = mapped_column(

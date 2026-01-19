@@ -45,6 +45,7 @@ class CameraContext:
     detection_mode: DetectionMode
     zone_polygon: Optional[List[List[int]]]
     confidence_threshold: float
+    inference_enabled: bool = True
 
     # Runtime state
     state: CameraState = CameraState.IDLE
@@ -54,6 +55,8 @@ class CameraContext:
     last_frame_time: float = 0
     last_infer_time: float = 0.0
     last_detections: List[Dict[str, Any]] = field(default_factory=list)
+    infer_in_flight: bool = False
+    infer_task: Optional[asyncio.Task] = None
     fps_ema: float = 0.0
     task: Optional[asyncio.Task] = None
 
@@ -201,6 +204,7 @@ class CameraManager:
             detection_mode=db_camera.detection_mode,
             zone_polygon=zone_polygon,
             confidence_threshold=db_camera.confidence_threshold,
+            inference_enabled=db_camera.inference_enabled,
         )
 
         self.cameras[db_camera.id] = context
@@ -235,6 +239,7 @@ class CameraManager:
             context.inference_height = db_camera.inference_height
             context.confidence_threshold = db_camera.confidence_threshold
             context.detection_mode = db_camera.detection_mode
+            context.inference_enabled = db_camera.inference_enabled
 
             if db_camera.zone_polygon is not None:
                 context.zone_polygon = db_camera.zone_polygon
@@ -252,6 +257,14 @@ class CameraManager:
             context.task.cancel()
             try:
                 await context.task
+            except asyncio.CancelledError:
+                pass
+
+        # Cancel inference task
+        if context.infer_task:
+            context.infer_task.cancel()
+            try:
+                await context.infer_task
             except asyncio.CancelledError:
                 pass
 
@@ -341,26 +354,14 @@ class CameraManager:
                 infer_interval = 1.0 / max(context.target_fps, 0.1)
                 should_infer = (loop_start - context.last_infer_time) >= infer_interval
 
-                if should_infer:
-                    detections = infer(
-                        self.model,
-                        frame,
-                        conf=context.confidence_threshold,
-                        imgsz=context.inference_width,
-                    )
-                    context.last_detections = detections
-                    context.last_infer_time = loop_start
-
-                    await self.event_processor.process_detections(
-                        camera_id=camera_id,
-                        organization_id=context.organization_id,
-                        detections=detections,
-                        mode=context.detection_mode.value,
-                        polygon=context.zone_polygon,
-                        frame=frame,
+                if should_infer and not context.infer_in_flight and context.inference_enabled:
+                    context.infer_in_flight = True
+                    frame_for_infer = frame.copy()
+                    context.infer_task = asyncio.create_task(
+                        self._run_inference(context, frame_for_infer)
                     )
 
-                detections = context.last_detections
+                detections = context.last_detections if context.inference_enabled else []
                 detection_count = len(detections)
 
                 # Annotate frame
@@ -371,6 +372,20 @@ class CameraManager:
                     mode=context.detection_mode.value,
                     polygon=polygon,
                 )
+
+                # Add "AI Disabled" overlay when inference is off
+                if not context.inference_enabled:
+                    h, w = annotated.shape[:2]
+                    text = "AI Disabled"
+                    font = cv2.FONT_HERSHEY_SIMPLEX
+                    font_scale = min(w, h) / 400.0  # Scale based on frame size
+                    thickness = max(1, int(font_scale * 2))
+                    (text_w, text_h), _ = cv2.getTextSize(text, font, font_scale, thickness)
+                    x = (w - text_w) // 2
+                    y = (h + text_h) // 2
+                    # Draw shadow for better visibility
+                    cv2.putText(annotated, text, (x + 2, y + 2), font, font_scale, (0, 0, 0), thickness + 1)
+                    cv2.putText(annotated, text, (x, y), font, font_scale, (128, 128, 128), thickness)
 
                 # Calculate FPS (exponential moving average)
                 fps = 0.0
@@ -414,6 +429,37 @@ class CameraManager:
             if context.cap:
                 context.cap.release()
                 context.cap = None
+
+    async def _run_inference(
+        self,
+        context: CameraContext,
+        frame: np.ndarray,
+    ) -> None:
+        """Run YOLO inference in a background thread and update state."""
+        try:
+            detections = await asyncio.to_thread(
+                infer,
+                self.model,
+                frame,
+                conf=context.confidence_threshold,
+                imgsz=context.inference_width,
+            )
+            context.last_detections = detections
+
+            await self.event_processor.process_detections(
+                camera_id=context.camera_id,
+                organization_id=context.organization_id,
+                detections=detections,
+                mode=context.detection_mode.value,
+                polygon=context.zone_polygon,
+                frame=frame,
+            )
+        except Exception as e:
+            print(f"[CAMERA:{context.name}] Inference error: {e}")
+        finally:
+            context.last_infer_time = asyncio.get_event_loop().time()
+            context.infer_in_flight = False
+            context.infer_task = None
 
     def _try_default_demo_fallback(
         self, context: CameraContext
