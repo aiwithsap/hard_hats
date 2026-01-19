@@ -1,4 +1,5 @@
 """Dashboard HTML templates."""
+# Build trigger: inference_enabled toggle
 
 LOGIN_HTML = """
 <!DOCTYPE html>
