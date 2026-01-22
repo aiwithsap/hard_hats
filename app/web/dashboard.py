@@ -413,20 +413,35 @@ DASHBOARD_HTML = """
                 const data = await response.json();
 
                 const grid = document.getElementById('camera-grid');
+                const cards = grid.querySelectorAll('[data-camera-id]');
+                const cameraCountChanged = cards.length !== data.cameras.length;
+
+                if (!cameraCountChanged && grid.dataset.ready === 'true') {
+                    data.cameras.forEach(cam => {
+                        const fpsEl = grid.querySelector(`[data-camera-id="${cam.id}"] [data-role="fps"]`);
+                        if (fpsEl) {
+                            fpsEl.textContent = `Stream ${ (cam.fps ?? 0).toFixed(1) } FPS | AI ${ (cam.infer_fps ?? 0).toFixed(1) } FPS`;
+                        }
+                    });
+                    return;
+                }
+
                 if (data.cameras.length === 0) {
+                    grid.dataset.ready = 'false';
                     grid.innerHTML = '<p class="text-gray-500 col-span-2 text-center py-8">No cameras configured</p>';
                     return;
                 }
 
+                grid.dataset.ready = 'true';
                 grid.innerHTML = data.cameras.map(cam => `
-                    <div class="camera-feed relative">
+                    <div class="camera-feed relative" data-camera-id="${cam.id}">
                         <img src="/api/v1/stream/${cam.id}" alt="${cam.name}" class="w-full aspect-video object-cover bg-dark-900">
                         <div class="absolute top-2 left-2 flex items-center gap-2">
                             <span class="zone-tag zone-${cam.zone.toLowerCase()}">${cam.zone}</span>
                         </div>
                         <div class="absolute bottom-2 left-2 right-2 flex justify-between items-center">
                             <span class="text-sm font-medium">${cam.name}</span>
-                            <span class="text-xs text-gray-400">Stream ${ (cam.fps ?? 0).toFixed(1) } FPS | AI ${ (cam.infer_fps ?? 0).toFixed(1) } FPS</span>
+                            <span class="text-xs text-gray-400" data-role="fps">Stream ${ (cam.fps ?? 0).toFixed(1) } FPS | AI ${ (cam.infer_fps ?? 0).toFixed(1) } FPS</span>
                         </div>
                     </div>
                 `).join('');
@@ -514,6 +529,7 @@ DASHBOARD_HTML = """
         // Periodic refresh
         setInterval(fetchStats, 10000);
         setInterval(fetchEvents, 5000);
+        setInterval(fetchCameras, 5000);
     </script>
 </body>
 </html>
@@ -638,19 +654,34 @@ LIVE_HTML = """
                 const data = await response.json();
 
                 const grid = document.getElementById('camera-grid');
+                const cards = grid.querySelectorAll('[data-camera-id]');
+                const cameraCountChanged = cards.length !== data.cameras.length;
+
+                if (!cameraCountChanged && grid.dataset.ready === 'true') {
+                    data.cameras.forEach(cam => {
+                        const fpsEl = grid.querySelector(`[data-camera-id="${cam.id}"] [data-role="fps"]`);
+                        if (fpsEl) {
+                            fpsEl.textContent = `Stream ${ (cam.fps ?? 0).toFixed(1) } FPS | AI ${ (cam.infer_fps ?? 0).toFixed(1) } FPS`;
+                        }
+                    });
+                    return;
+                }
+
                 if (data.cameras.length === 0) {
+                    grid.dataset.ready = 'false';
                     grid.innerHTML = '<p class="text-gray-500 col-span-2 text-center py-8">No cameras configured</p>';
                     return;
                 }
 
+                grid.dataset.ready = 'true';
                 grid.innerHTML = data.cameras.map(cam => `
-                    <div class="camera-feed">
+                    <div class="camera-feed" data-camera-id="${cam.id}">
                         <img src="/api/v1/stream/${cam.id}" alt="${cam.name}" class="w-full aspect-video object-cover bg-dark-900">
                         <div class="absolute top-3 left-3 flex items-center gap-2">
                             <div class="status-dot"></div>
                             <span class="zone-tag zone-${cam.zone.toLowerCase()}">${cam.zone}</span>
                         </div>
-                        <div class="absolute top-3 right-3 bg-black/50 px-2 py-1 rounded text-xs">
+                        <div class="absolute top-3 right-3 bg-black/50 px-2 py-1 rounded text-xs" data-role="fps">
                             Stream ${ (cam.fps ?? 0).toFixed(1) } FPS | AI ${ (cam.infer_fps ?? 0).toFixed(1) } FPS
                         </div>
                         <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
@@ -679,6 +710,7 @@ LIVE_HTML = """
         }
 
         fetchCameras();
+        setInterval(fetchCameras, 5000);
     </script>
 </body>
 </html>
