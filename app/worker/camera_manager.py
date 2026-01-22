@@ -306,6 +306,10 @@ class CameraManager:
                 camera_id, CameraStatus.online, None
             )
 
+            # Initialize inference timing so first inference can calculate EMA
+            # Without this, last_infer_time=0 causes first EMA calculation to be skipped
+            context.last_infer_time = asyncio.get_event_loop().time()
+
             def get_stream_fps(capture: cv2.VideoCapture) -> float:
                 fps = capture.get(cv2.CAP_PROP_FPS)
                 if not fps or fps < 1.0:
