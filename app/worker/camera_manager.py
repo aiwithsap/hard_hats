@@ -58,6 +58,7 @@ class CameraContext:
     infer_in_flight: bool = False
     infer_task: Optional[asyncio.Task] = None
     fps_ema: float = 0.0
+    infer_fps_ema: float = 0.0
     task: Optional[asyncio.Task] = None
 
 
@@ -406,6 +407,7 @@ class CameraManager:
                     frame=annotated,
                     fps=fps,
                     detection_count=detection_count,
+                    infer_fps=context.infer_fps_ema if context.inference_enabled else 0.0,
                 )
 
                 context.frames_processed += 1
@@ -457,7 +459,15 @@ class CameraManager:
         except Exception as e:
             print(f"[CAMERA:{context.name}] Inference error: {e}")
         finally:
-            context.last_infer_time = asyncio.get_event_loop().time()
+            now = asyncio.get_event_loop().time()
+            if context.last_infer_time > 0:
+                delta = max(now - context.last_infer_time, 1e-6)
+                instant_fps = 1.0 / delta
+                if context.infer_fps_ema <= 0:
+                    context.infer_fps_ema = instant_fps
+                else:
+                    context.infer_fps_ema = (context.infer_fps_ema * 0.8) + (instant_fps * 0.2)
+            context.last_infer_time = now
             context.infer_in_flight = False
             context.infer_task = None
 

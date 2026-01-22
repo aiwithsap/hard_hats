@@ -60,13 +60,19 @@ async def _get_runtime_stats(camera_ids: List[UUID]) -> dict:
 
         stats[camera_id] = {
             "fps": _parse_float(meta.get("fps"), 0.0),
+            "infer_fps": _parse_float(meta.get("infer_fps"), 0.0),
             "detection_count": _parse_int(meta.get("detection_count"), 0),
         }
 
     return stats
 
 
-def camera_to_response(camera: Camera, fps: float = 0.0, detection_count: int = 0) -> CameraResponse:
+def camera_to_response(
+    camera: Camera,
+    fps: float = 0.0,
+    detection_count: int = 0,
+    infer_fps: float = 0.0,
+) -> CameraResponse:
     """Convert Camera model to CameraResponse."""
     return CameraResponse(
         id=camera.id,
@@ -92,6 +98,7 @@ def camera_to_response(camera: Camera, fps: float = 0.0, detection_count: int = 
         created_at=camera.created_at,
         updated_at=camera.updated_at,
         fps=fps,
+        infer_fps=infer_fps,
         detection_count=detection_count,
     )
 
@@ -121,6 +128,7 @@ async def list_cameras(
             camera_to_response(
                 c,
                 fps=runtime_stats.get(c.id, {}).get("fps", 0.0),
+                infer_fps=runtime_stats.get(c.id, {}).get("infer_fps", 0.0),
                 detection_count=runtime_stats.get(c.id, {}).get("detection_count", 0),
             )
             for c in cameras
@@ -210,6 +218,7 @@ async def get_camera(
     return camera_to_response(
         camera,
         fps=stats.get("fps", 0.0),
+        infer_fps=stats.get("infer_fps", 0.0),
         detection_count=stats.get("detection_count", 0),
     )
 

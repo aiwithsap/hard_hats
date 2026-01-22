@@ -70,6 +70,7 @@ class FramePublisher:
         frame_data: bytes,
         fps: float,
         detection_count: int,
+        infer_fps: Optional[float] = None,
     ) -> None:
         """Publish frame and update metadata."""
         # Publish frame
@@ -80,6 +81,8 @@ class FramePublisher:
             "fps": fps,
             "detection_count": detection_count,
         }
+        if infer_fps is not None:
+            metadata["infer_fps"] = infer_fps
         await self.client.hset(
             f"camera_meta:{camera_id}",
             mapping=metadata,
@@ -104,7 +107,7 @@ class FrameSubscriber:
         return await self.client.get(f"latest_frame:{camera_id}")
 
     async def get_metadata(self, camera_id: str) -> dict:
-        """Get latest metadata (fps, detection_count) for a camera."""
+        """Get latest metadata (fps, infer_fps, detection_count) for a camera."""
         raw = await self.client.hgetall(f"camera_meta:{camera_id}")
         return _decode_metadata(raw)
 

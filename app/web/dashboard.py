@@ -426,7 +426,7 @@ DASHBOARD_HTML = """
                         </div>
                         <div class="absolute bottom-2 left-2 right-2 flex justify-between items-center">
                             <span class="text-sm font-medium">${cam.name}</span>
-                            <span class="text-xs text-gray-400">${cam.fps.toFixed(1)} FPS</span>
+                            <span class="text-xs text-gray-400">Stream ${ (cam.fps ?? 0).toFixed(1) } FPS | AI ${ (cam.infer_fps ?? 0).toFixed(1) } FPS</span>
                         </div>
                     </div>
                 `).join('');
@@ -651,7 +651,7 @@ LIVE_HTML = """
                             <span class="zone-tag zone-${cam.zone.toLowerCase()}">${cam.zone}</span>
                         </div>
                         <div class="absolute top-3 right-3 bg-black/50 px-2 py-1 rounded text-xs">
-                            ${cam.fps.toFixed(1)} FPS
+                            Stream ${ (cam.fps ?? 0).toFixed(1) } FPS | AI ${ (cam.infer_fps ?? 0).toFixed(1) } FPS
                         </div>
                         <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
                             <h3 class="font-semibold">${cam.name}</h3>

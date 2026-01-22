@@ -34,6 +34,7 @@ class FrameProcessor:
         is_demo: bool = False,
         fps: Optional[float] = None,
         detection_count: Optional[int] = None,
+        infer_fps: Optional[float] = None,
     ) -> bool:
         """
         Encode and publish a frame to Redis.
@@ -64,6 +65,7 @@ class FrameProcessor:
                     encoded.tobytes(),
                     fps,
                     detection_count,
+                    infer_fps=infer_fps,
                 )
             else:
                 await self.publisher.publish_frame(camera_id, encoded.tobytes())

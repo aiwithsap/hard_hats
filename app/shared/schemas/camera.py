@@ -105,6 +105,7 @@ class CameraResponse(BaseModel):
 
     # Runtime stats (from Redis/worker)
     fps: float = 0.0
+    infer_fps: float = 0.0
     detection_count: int = 0
 
     class Config:
