@@ -328,8 +328,23 @@ class CameraManager:
             def get_stream_fps(capture: cv2.VideoCapture) -> float:
                 fps = capture.get(cv2.CAP_PROP_FPS)
                 if not fps or fps < 1.0:
-                    return 15.0
-                return fps
+                    fps = 15.0
+                if config.STREAM_FPS_MAX > 0:
+                    fps = min(fps, config.STREAM_FPS_MAX)
+                return max(fps, 1.0)
+
+            def downscale_for_stream(frame: np.ndarray) -> np.ndarray:
+                max_w = config.STREAM_MAX_WIDTH
+                max_h = config.STREAM_MAX_HEIGHT
+                if max_w <= 0 or max_h <= 0:
+                    return frame
+                h, w = frame.shape[:2]
+                if w <= max_w and h <= max_h:
+                    return frame
+                scale = min(max_w / w, max_h / h)
+                new_w = max(1, int(w * scale))
+                new_h = max(1, int(h * scale))
+                return cv2.resize(frame, (new_w, new_h))
 
             stream_fps = get_stream_fps(cap)
             stream_interval = 1.0 / stream_fps
@@ -439,10 +454,13 @@ class CameraManager:
                         context.fps_ema = (context.fps_ema * 0.8) + (instant_fps * 0.2)
                     fps = context.fps_ema
 
+                # Downscale for streaming if configured
+                stream_frame = downscale_for_stream(annotated)
+
                 # Publish frame
                 await self.frame_processor.publish_frame(
                     camera_id=str(camera_id),
-                    frame=annotated,
+                    frame=stream_frame,
                     fps=fps,
                     detection_count=detection_count,
                     infer_fps=context.infer_fps_ema if context.inference_enabled else 0.0,
