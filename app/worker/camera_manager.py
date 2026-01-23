@@ -14,7 +14,7 @@ from ..shared.db.repositories.cameras import GlobalCameraRepository
 from ..shared.redis.pubsub import get_frame_publisher, get_event_publisher
 from .config import config
 from .rtsp_handler import get_rtsp_handler, RTSPHandler, get_test_pattern_capture
-from .vision import get_model, infer, annotate_frame
+from .vision import get_model, infer, annotate_frame, scale_detections
 from .frame_publisher import FrameProcessor
 from .event_processor import EventProcessor
 
@@ -46,6 +46,10 @@ class CameraContext:
     zone_polygon: Optional[List[List[int]]]
     confidence_threshold: float
     inference_enabled: bool = True
+
+    # Stream dimensions (may differ from inference dimensions)
+    stream_width: int = 0
+    stream_height: int = 0
 
     # Runtime state
     state: CameraState = CameraState.IDLE
@@ -190,6 +194,15 @@ class CameraManager:
         # Respect user's FPS setting (0.5 FPS is intentional to save compute)
         target_fps = db_camera.target_fps
 
+        # Stream dimensions (larger than inference for better quality)
+        # If STREAM_MAX_WIDTH is 0, use inference dimensions
+        if config.STREAM_MAX_WIDTH > 0:
+            stream_width = config.STREAM_MAX_WIDTH
+            stream_height = config.STREAM_MAX_HEIGHT
+        else:
+            stream_width = inference_width
+            stream_height = inference_height
+
         context = CameraContext(
             camera_id=db_camera.id,
             organization_id=db_camera.organization_id,
@@ -206,6 +219,8 @@ class CameraManager:
             zone_polygon=zone_polygon,
             confidence_threshold=db_camera.confidence_threshold,
             inference_enabled=db_camera.inference_enabled,
+            stream_width=stream_width,
+            stream_height=stream_height,
         )
 
         self.cameras[db_camera.id] = context
@@ -349,30 +364,49 @@ class CameraManager:
                     stream_interval = 1.0 / stream_fps
                     continue
 
-                # Resize for inference
-                if frame.shape[1] != context.inference_width or frame.shape[0] != context.inference_height:
+                # Resize to stream dimensions only if frame is larger
+                # (saves CPU vs resizing every frame to small inference size)
+                frame_h, frame_w = frame.shape[:2]
+                if frame_w > context.stream_width or frame_h > context.stream_height:
                     frame = cv2.resize(
                         frame,
-                        (context.inference_width, context.inference_height)
+                        (context.stream_width, context.stream_height)
                     )
+                    frame_h, frame_w = context.stream_height, context.stream_width
 
                 infer_interval = 1.0 / max(context.target_fps, 0.1)
                 should_infer = (loop_start - context.last_infer_time) >= infer_interval
 
                 if should_infer and not context.infer_in_flight and context.inference_enabled:
                     context.infer_in_flight = True
-                    frame_for_infer = frame.copy()
+                    # Only resize to inference dimensions when actually doing inference
+                    if frame_w != context.inference_width or frame_h != context.inference_height:
+                        frame_for_infer = cv2.resize(
+                            frame,
+                            (context.inference_width, context.inference_height)
+                        )
+                    else:
+                        frame_for_infer = frame.copy()
                     context.infer_task = asyncio.create_task(
                         self._run_inference(context, frame_for_infer)
                     )
 
+                # Scale detections from inference coords to stream coords
                 detections = context.last_detections if context.inference_enabled else []
+                if detections and (frame_w != context.inference_width or frame_h != context.inference_height):
+                    detections = scale_detections(
+                        detections,
+                        context.inference_width,
+                        context.inference_height,
+                        frame_w,
+                        frame_h,
+                    )
                 detection_count = len(detections)
 
-                # Annotate frame
+                # Annotate frame (no copy needed - frame is replaced each iteration)
                 polygon = context.zone_polygon if context.detection_mode == DetectionMode.zone else None
                 annotated = annotate_frame(
-                    frame.copy(),
+                    frame,
                     detections,
                     mode=context.detection_mode.value,
                     polygon=polygon,

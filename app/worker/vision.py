@@ -3,6 +3,7 @@
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import shutil
+import hashlib
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -45,6 +46,10 @@ COLOR_WHITE = (255, 255, 255)
 
 
 _model: Optional[YOLO] = None
+
+# Zone overlay cache: (width, height, polygon_hash) -> (overlay_mask, polygon_lines)
+_zone_overlay_cache: Dict[Tuple[int, int, int], Tuple[np.ndarray, np.ndarray]] = {}
+_zone_cache_max_size = 20  # Maximum number of cached overlays
 
 
 def ensure_weights(weights_path: str) -> None:
@@ -177,6 +182,46 @@ def get_centroid(box: Tuple[int, int, int, int]) -> Tuple[int, int]:
     return ((x1 + x2) // 2, (y1 + y2) // 2)
 
 
+def scale_detections(
+    detections: List[Dict[str, Any]],
+    src_width: int,
+    src_height: int,
+    dst_width: int,
+    dst_height: int,
+) -> List[Dict[str, Any]]:
+    """
+    Scale detection box coordinates from source to destination dimensions.
+
+    Args:
+        detections: List of detection dicts with 'box' key
+        src_width: Source frame width (inference size)
+        src_height: Source frame height (inference size)
+        dst_width: Destination frame width (stream size)
+        dst_height: Destination frame height (stream size)
+
+    Returns:
+        New list with scaled box coordinates
+    """
+    if src_width == dst_width and src_height == dst_height:
+        return detections
+
+    scale_x = dst_width / src_width
+    scale_y = dst_height / src_height
+
+    scaled = []
+    for det in detections:
+        x1, y1, x2, y2 = det["box"]
+        scaled_box = (
+            int(x1 * scale_x),
+            int(y1 * scale_y),
+            int(x2 * scale_x),
+            int(y2 * scale_y),
+        )
+        scaled.append({**det, "box": scaled_box})
+
+    return scaled
+
+
 def draw_box(
     frame: np.ndarray,
     box: Tuple[int, int, int, int],
@@ -199,18 +244,75 @@ def draw_box(
     return frame
 
 
+def _get_polygon_hash(polygon: List[Tuple[int, int]]) -> int:
+    """Get a hash of polygon coordinates for cache key."""
+    poly_bytes = str(polygon).encode()
+    return int(hashlib.md5(poly_bytes).hexdigest()[:8], 16)
+
+
+def _get_zone_overlay(
+    width: int,
+    height: int,
+    polygon: List[Tuple[int, int]],
+    color: Tuple[int, int, int] = COLOR_BLUE,
+    alpha: float = 0.3,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Get or create a cached zone overlay.
+
+    Returns (fill_mask, line_mask) where:
+    - fill_mask: Pre-computed semi-transparent filled polygon
+    - line_mask: Pre-computed polygon outline
+    """
+    global _zone_overlay_cache
+
+    poly_hash = _get_polygon_hash(polygon)
+    cache_key = (width, height, poly_hash)
+
+    if cache_key in _zone_overlay_cache:
+        return _zone_overlay_cache[cache_key]
+
+    # Create new overlay
+    # Fill mask: BGRA with alpha for the filled polygon area
+    fill_mask = np.zeros((height, width, 3), dtype=np.uint8)
+    pts = np.array(polygon, dtype=np.int32)
+    cv2.fillPoly(fill_mask, [pts], color)
+
+    # Line mask: polygon outline
+    line_mask = np.zeros((height, width, 3), dtype=np.uint8)
+    cv2.polylines(line_mask, [pts], True, color, 2)
+
+    # Evict oldest entries if cache is full
+    if len(_zone_overlay_cache) >= _zone_cache_max_size:
+        # Remove first (oldest) entry
+        oldest_key = next(iter(_zone_overlay_cache))
+        del _zone_overlay_cache[oldest_key]
+
+    _zone_overlay_cache[cache_key] = (fill_mask, line_mask)
+    return fill_mask, line_mask
+
+
 def draw_polygon(
     frame: np.ndarray,
     polygon: List[Tuple[int, int]],
     color: Tuple[int, int, int] = COLOR_BLUE,
     alpha: float = 0.3,
 ) -> np.ndarray:
-    """Draw a semi-transparent polygon on frame."""
-    overlay = frame.copy()
-    pts = np.array(polygon, dtype=np.int32)
-    cv2.fillPoly(overlay, [pts], color)
-    cv2.polylines(frame, [pts], True, color, 2)
-    cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+    """
+    Draw a semi-transparent polygon on frame using cached overlay.
+
+    Uses pre-computed fill and line masks to avoid repeated fillPoly calls.
+    """
+    height, width = frame.shape[:2]
+    fill_mask, line_mask = _get_zone_overlay(width, height, polygon, color, alpha)
+
+    # Blend the fill mask with alpha
+    cv2.addWeighted(fill_mask, alpha, frame, 1.0, 0, frame)
+
+    # Add the outline (fully opaque)
+    mask = line_mask.any(axis=2)
+    frame[mask] = line_mask[mask]
+
     return frame
 
 

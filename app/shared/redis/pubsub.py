@@ -2,7 +2,8 @@
 
 import json
 import asyncio
-from typing import AsyncGenerator, Callable, Optional
+import time
+from typing import AsyncGenerator, Callable, Optional, Dict
 from uuid import UUID
 
 import redis.asyncio as redis
@@ -13,6 +14,10 @@ from .client import get_redis
 # Channel patterns
 FRAME_CHANNEL_PREFIX = "frames:"
 EVENT_CHANNEL_PREFIX = "events:"
+
+# Subscriber count cache (shared across instances)
+_subscriber_cache: Dict[str, tuple[int, float]] = {}
+_SUBSCRIBER_CACHE_TTL = 1.0  # seconds
 
 
 def _decode_metadata(raw: Optional[dict]) -> dict:
@@ -34,6 +39,34 @@ class FramePublisher:
 
     def __init__(self, client: redis.Redis):
         self.client = client
+        self._last_latest_frame_update: Dict[str, float] = {}
+        self._latest_frame_update_interval = 2.0  # Update latest_frame every 2 seconds when no subscribers
+
+    async def get_subscriber_count(self, camera_id: str) -> int:
+        """
+        Get the number of subscribers to a camera's frame channel.
+
+        Uses cached result for 1 second to avoid hammering Redis.
+        """
+        global _subscriber_cache
+        channel = f"{FRAME_CHANNEL_PREFIX}{camera_id}"
+        now = time.time()
+
+        # Check cache
+        if channel in _subscriber_cache:
+            count, cached_at = _subscriber_cache[channel]
+            if now - cached_at < _SUBSCRIBER_CACHE_TTL:
+                return count
+
+        # Query Redis
+        try:
+            result = await self.client.pubsub_numsub(channel)
+            # result is a list of (channel, count) tuples
+            count = result[0][1] if result else 0
+            _subscriber_cache[channel] = (count, now)
+            return count
+        except Exception:
+            return 0  # Assume no subscribers on error
 
     async def publish_frame(
         self,
@@ -146,6 +179,142 @@ class FrameSubscriber:
             self._pubsub = None
 
 
+class SharedFrameBroadcaster:
+    """
+    Shared broadcaster for frame streaming.
+
+    Maintains a single Redis subscription per camera and fans out
+    frames to multiple clients using asyncio queues. This reduces
+    Redis connections when multiple viewers watch the same camera.
+    """
+
+    def __init__(self, client: redis.Redis):
+        self.client = client
+        # camera_id -> (pubsub, set of client queues, listener task)
+        self._subscriptions: Dict[str, tuple] = {}
+        self._lock = asyncio.Lock()
+
+    async def get_latest_frame(self, camera_id: str) -> Optional[bytes]:
+        """Get the latest frame for a camera."""
+        return await self.client.get(f"latest_frame:{camera_id}")
+
+    async def subscribe(self, camera_id: str) -> AsyncGenerator[bytes, None]:
+        """
+        Subscribe to frame updates for a camera.
+
+        Uses a shared subscription when multiple clients watch the same camera.
+
+        Yields:
+            JPEG-encoded frame bytes
+        """
+        queue: asyncio.Queue = asyncio.Queue(maxsize=5)  # Buffer up to 5 frames
+
+        async with self._lock:
+            if camera_id not in self._subscriptions:
+                # Create new subscription for this camera
+                pubsub = self.client.pubsub()
+                clients: set = set()
+                channel = f"{FRAME_CHANNEL_PREFIX}{camera_id}"
+                await pubsub.subscribe(channel)
+
+                # Start listener task
+                task = asyncio.create_task(
+                    self._listener_loop(camera_id, pubsub, clients)
+                )
+                self._subscriptions[camera_id] = (pubsub, clients, task)
+
+            _, clients, _ = self._subscriptions[camera_id]
+            clients.add(queue)
+
+        try:
+            # First, yield the latest frame if available
+            latest = await self.get_latest_frame(camera_id)
+            if latest:
+                yield latest
+
+            # Then yield frames from the shared queue
+            while True:
+                try:
+                    frame = await asyncio.wait_for(queue.get(), timeout=5.0)
+                    yield frame
+                except asyncio.TimeoutError:
+                    # Check if we're still supposed to be running
+                    continue
+
+        except asyncio.CancelledError:
+            pass
+        finally:
+            # Unregister client
+            async with self._lock:
+                if camera_id in self._subscriptions:
+                    _, clients, _ = self._subscriptions[camera_id]
+                    clients.discard(queue)
+
+                    # If no more clients, clean up subscription
+                    if not clients:
+                        await self._cleanup_subscription(camera_id)
+
+    async def _listener_loop(
+        self,
+        camera_id: str,
+        pubsub: redis.client.PubSub,
+        clients: set,
+    ) -> None:
+        """Listen for frames and broadcast to all registered clients."""
+        try:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    frame_data = message["data"]
+
+                    # Broadcast to all clients
+                    dead_clients = []
+                    for queue in list(clients):
+                        try:
+                            # Non-blocking put, drop frame if queue is full
+                            queue.put_nowait(frame_data)
+                        except asyncio.QueueFull:
+                            pass  # Client is too slow, skip this frame
+                        except Exception:
+                            dead_clients.append(queue)
+
+                    # Remove dead clients
+                    for queue in dead_clients:
+                        clients.discard(queue)
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"[BROADCASTER] Listener error for {camera_id}: {e}")
+
+    async def _cleanup_subscription(self, camera_id: str) -> None:
+        """Clean up a camera subscription."""
+        if camera_id not in self._subscriptions:
+            return
+
+        pubsub, clients, task = self._subscriptions.pop(camera_id)
+
+        # Cancel listener task
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Close pubsub
+        try:
+            channel = f"{FRAME_CHANNEL_PREFIX}{camera_id}"
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+        except Exception:
+            pass
+
+    async def close(self) -> None:
+        """Close all subscriptions."""
+        async with self._lock:
+            for camera_id in list(self._subscriptions.keys()):
+                await self._cleanup_subscription(camera_id)
+
+
 class EventPublisher:
     """Publishes events to Redis for SSE broadcast."""
 
@@ -253,6 +422,24 @@ async def get_frame_subscriber() -> FrameSubscriber:
     """Get a frame subscriber instance."""
     client = await get_redis()
     return FrameSubscriber(client)
+
+
+# Global shared broadcaster instance (singleton for web service)
+_shared_broadcaster: Optional[SharedFrameBroadcaster] = None
+
+
+async def get_shared_frame_broadcaster() -> SharedFrameBroadcaster:
+    """
+    Get the shared frame broadcaster instance.
+
+    Uses a single Redis connection shared across all stream clients.
+    This is more efficient when multiple clients watch the same camera.
+    """
+    global _shared_broadcaster
+    if _shared_broadcaster is None:
+        client = await get_redis()
+        _shared_broadcaster = SharedFrameBroadcaster(client)
+    return _shared_broadcaster
 
 
 async def get_event_publisher() -> EventPublisher:

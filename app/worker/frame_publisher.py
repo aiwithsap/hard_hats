@@ -1,8 +1,9 @@
 """Frame processing and Redis publishing."""
 
+import time
 import cv2
 import numpy as np
-from typing import Optional
+from typing import Optional, Dict
 
 from ..shared.redis.pubsub import FramePublisher
 from .config import config
@@ -16,16 +17,20 @@ class FrameProcessor:
     - JPEG encoding with configurable quality
     - Frame rate limiting
     - Watermark overlay for demo mode
+    - Subscriber-aware publishing (skips encoding when no viewers)
     """
 
     def __init__(
         self,
         publisher: FramePublisher,
-        jpeg_quality: int = config.THUMBNAIL_QUALITY,
+        jpeg_quality: int = config.STREAM_JPEG_QUALITY,
     ):
         self.publisher = publisher
         self.jpeg_quality = jpeg_quality
         self._encode_params = [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality]
+        # Track last time we updated latest_frame for each camera
+        self._last_latest_update: Dict[str, float] = {}
+        self._latest_update_interval = 2.0  # Update latest_frame at least every 2s
 
     async def publish_frame(
         self,
@@ -39,6 +44,9 @@ class FrameProcessor:
         """
         Encode and publish a frame to Redis.
 
+        Skips expensive JPEG encoding when no subscribers are watching,
+        but still updates latest_frame periodically for new viewers.
+
         Args:
             camera_id: Camera identifier
             frame: OpenCV frame (BGR format)
@@ -48,6 +56,27 @@ class FrameProcessor:
             True if published successfully
         """
         try:
+            now = time.time()
+
+            # Check if anyone is watching (cached for 1 second)
+            subscriber_count = await self.publisher.get_subscriber_count(camera_id)
+            last_update = self._last_latest_update.get(camera_id, 0)
+            needs_latest_update = (now - last_update) >= self._latest_update_interval
+
+            # Skip encoding if no subscribers AND latest_frame was updated recently
+            if subscriber_count == 0 and not needs_latest_update:
+                # Still update metadata even when not encoding
+                if fps is not None and detection_count is not None:
+                    metadata = {"fps": fps, "detection_count": detection_count}
+                    if infer_fps is not None:
+                        metadata["infer_fps"] = infer_fps
+                    await self.publisher.client.hset(
+                        f"camera_meta:{camera_id}",
+                        mapping=metadata,
+                    )
+                    await self.publisher.client.expire(f"camera_meta:{camera_id}", 30)
+                return True  # Success, but no encoding needed
+
             # Add demo watermark if needed
             if is_demo:
                 frame = self._add_demo_watermark(frame)
@@ -58,17 +87,22 @@ class FrameProcessor:
             if not success:
                 return False
 
+            frame_bytes = encoded.tobytes()
+
             # Publish to Redis (with metadata when available)
             if fps is not None and detection_count is not None:
                 await self.publisher.publish_frame_with_metadata(
                     camera_id,
-                    encoded.tobytes(),
+                    frame_bytes,
                     fps,
                     detection_count,
                     infer_fps=infer_fps,
                 )
             else:
-                await self.publisher.publish_frame(camera_id, encoded.tobytes())
+                await self.publisher.publish_frame(camera_id, frame_bytes)
+
+            # Track latest_frame update time
+            self._last_latest_update[camera_id] = now
 
             return True
 

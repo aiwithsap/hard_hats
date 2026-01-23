@@ -1,6 +1,7 @@
 """Video streaming API endpoints."""
 
 import asyncio
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,23 +10,66 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....shared.db.database import get_db_session
 from ....shared.db.repositories.cameras import CameraRepository
-from ....shared.redis.pubsub import get_frame_subscriber
+from ....shared.redis.pubsub import get_frame_subscriber, get_shared_frame_broadcaster
 from ...auth.dependencies import CurrentUser
 
 router = APIRouter()
+
+
+# Pre-generated placeholder JPEG (generated once at module load)
+_placeholder_jpeg: Optional[bytes] = None
+
+
+def _get_placeholder_jpeg() -> bytes:
+    """Get or create cached placeholder JPEG."""
+    global _placeholder_jpeg
+    if _placeholder_jpeg is None:
+        import cv2
+        import numpy as np
+
+        # Create a dark frame with "No Signal" text
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        frame[:] = (30, 30, 40)  # Dark background
+
+        cv2.putText(
+            frame,
+            "No Signal",
+            (220, 230),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.5,
+            (100, 100, 100),
+            2,
+        )
+        cv2.putText(
+            frame,
+            "Waiting for video stream...",
+            (170, 270),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (80, 80, 80),
+            1,
+        )
+
+        _, jpeg = cv2.imencode(".jpg", frame)
+        _placeholder_jpeg = jpeg.tobytes()
+    return _placeholder_jpeg
 
 
 async def generate_mjpeg_stream(camera_id: str):
     """
     Generate MJPEG stream from Redis frames.
 
+    Uses a shared broadcaster to reduce Redis connections when
+    multiple clients watch the same camera.
+
     Yields:
         MJPEG frame bytes with boundary markers
     """
     try:
-        subscriber = await get_frame_subscriber()
+        # Use shared broadcaster for efficient multi-client streaming
+        broadcaster = await get_shared_frame_broadcaster()
 
-        async for frame_data in subscriber.subscribe(camera_id):
+        async for frame_data in broadcaster.subscribe(camera_id):
             # MJPEG boundary format
             yield b"--frame\r\n"
             yield b"Content-Type: image/jpeg\r\n\r\n"
@@ -41,67 +85,20 @@ async def generate_mjpeg_stream(camera_id: str):
     except Exception as e:
         # Log error but don't crash
         print(f"Stream error for camera {camera_id}: {e}")
-    finally:
-        if subscriber:
-            await subscriber.unsubscribe()
 
 
 async def generate_placeholder_frame():
     """Generate a placeholder frame when no video is available."""
-    import cv2
-    import numpy as np
-
-    # Create a dark frame with "No Signal" text
-    frame = np.zeros((480, 640, 3), dtype=np.uint8)
-    frame[:] = (30, 30, 40)  # Dark background
-
-    cv2.putText(
-        frame,
-        "No Signal",
-        (220, 230),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1.5,
-        (100, 100, 100),
-        2,
-    )
-    cv2.putText(
-        frame,
-        "Waiting for video stream...",
-        (170, 270),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (80, 80, 80),
-        1,
-    )
-
-    _, jpeg = cv2.imencode(".jpg", frame)
-    return jpeg.tobytes()
+    return _get_placeholder_jpeg()
 
 
 async def generate_placeholder_stream():
     """Generate a placeholder stream with periodic frame updates."""
-    import cv2
-    import numpy as np
-
     try:
+        # Use cached placeholder JPEG - no encoding needed
+        frame_data = _get_placeholder_jpeg()
+
         while True:
-            # Create frame
-            frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            frame[:] = (30, 30, 40)
-
-            cv2.putText(
-                frame,
-                "No Signal",
-                (220, 230),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1.5,
-                (100, 100, 100),
-                2,
-            )
-
-            _, jpeg = cv2.imencode(".jpg", frame)
-            frame_data = jpeg.tobytes()
-
             yield b"--frame\r\n"
             yield b"Content-Type: image/jpeg\r\n\r\n"
             yield frame_data
@@ -134,10 +131,10 @@ async def stream_camera(
             detail="Camera not found",
         )
 
-    # Try to get frame from Redis first
+    # Try to get frame from Redis first using shared broadcaster
     try:
-        subscriber = await get_frame_subscriber()
-        latest_frame = await subscriber.get_latest_frame(str(camera_id))
+        broadcaster = await get_shared_frame_broadcaster()
+        latest_frame = await broadcaster.get_latest_frame(str(camera_id))
 
         if latest_frame:
             # Camera has active stream
