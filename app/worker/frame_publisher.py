@@ -110,6 +110,31 @@ class FrameProcessor:
             print(f"[FRAME_PROCESSOR] Error publishing frame: {e}")
             return False
 
+    async def should_process_frame(self, camera_id: str) -> bool:
+        """
+        Check if a frame needs to be processed/published for this camera.
+
+        Returns True if:
+        1. There are active subscribers
+        2. OR it's time for a periodic "latest frame" update (heartbeat)
+        """
+        try:
+            # Check subscriber count (cached)
+            subscriber_count = await self.publisher.get_subscriber_count(camera_id)
+            if subscriber_count > 0:
+                return True
+
+            # Check heartbeat
+            last_update = self._last_latest_update.get(camera_id, 0)
+            now = time.time()
+            if (now - last_update) >= self._latest_update_interval:
+                return True
+
+            return False
+        except Exception:
+            # Default to True on error to be safe
+            return True
+
     def _add_demo_watermark(self, frame: np.ndarray) -> np.ndarray:
         """Add a "DEMO MODE" watermark to the frame."""
         frame = frame.copy()

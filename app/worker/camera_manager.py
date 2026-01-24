@@ -357,12 +357,11 @@ class CameraManager:
             while self._running and context.state == CameraState.STREAMING:
                 loop_start = asyncio.get_event_loop().time()
 
-                # Read frame
-                ret, frame = cap.read()
-
-                if not ret or frame is None:
+                # Optimization: Always grab to clear buffer/advance file (fast)
+                # This keeps the stream fresh without decoding the image
+                if not cap.grab():
                     # Try to reconnect
-                    print(f"[CAMERA:{context.name}] Frame read failed, reconnecting...")
+                    print(f"[CAMERA:{context.name}] Frame grab failed, reconnecting...")
                     cap.release()
 
                     cap, error = await self._connect_camera(context)
@@ -379,19 +378,37 @@ class CameraManager:
                     stream_interval = 1.0 / stream_fps
                     continue
 
-                # Resize to stream dimensions only if frame is larger
-                # (saves CPU vs resizing every frame to small inference size)
-                frame_h, frame_w = frame.shape[:2]
-                if frame_w > context.stream_width or frame_h > context.stream_height:
-                    frame = cv2.resize(
-                        frame,
-                        (context.stream_width, context.stream_height)
-                    )
-                    frame_h, frame_w = context.stream_height, context.stream_width
-
+                # Check if we need to process this frame
                 infer_interval = 1.0 / max(context.target_fps, 0.1)
                 should_infer = (loop_start - context.last_infer_time) >= infer_interval
+                
+                # Check subscribers/heartbeat
+                should_view = await self.frame_processor.should_process_frame(str(camera_id))
 
+                if not should_infer and not should_view:
+                    # Skip decoding entirely
+                    # Maintain timing for file sources to avoid fast-forwarding
+                    elapsed = asyncio.get_event_loop().time() - loop_start
+                    sleep_time = max(0, stream_interval - elapsed)
+                    if sleep_time > 0:
+                        await asyncio.sleep(sleep_time)
+                    continue
+
+                # We need the frame content, so decode it now (expensive)
+                ret, frame = cap.retrieve()
+
+                if not ret or frame is None:
+                    # Treat decode failure same as grab failure
+                    print(f"[CAMERA:{context.name}] Frame decode failed, reconnecting...")
+                    cap.release()
+                    cap, error = await self._connect_camera(context)
+                    if error: # ... logic handles reconnection in next loop iteration
+                        pass # grab check will catch it
+                    continue
+
+                frame_h, frame_w = frame.shape[:2]
+
+                # Run Inference if needed
                 if should_infer and not context.infer_in_flight and context.inference_enabled:
                     context.infer_in_flight = True
                     # Only resize to inference dimensions when actually doing inference
@@ -406,65 +423,77 @@ class CameraManager:
                         self._run_inference(context, frame_for_infer)
                     )
 
-                # Scale detections from inference coords to stream coords
-                detections = context.last_detections if context.inference_enabled else []
-                if detections and (frame_w != context.inference_width or frame_h != context.inference_height):
-                    detections = scale_detections(
+                # Only do visualization work if someone is watching
+                if should_view:
+                    # Scale detections from inference coords to stream coords
+                    detections = context.last_detections if context.inference_enabled else []
+                    
+                    # Resize to stream dimensions if needed
+                    # Logic: Resize frame to stream size first, then annotate
+                    if frame_w > context.stream_width or frame_h > context.stream_height:
+                        frame = cv2.resize(
+                            frame,
+                            (context.stream_width, context.stream_height)
+                        )
+                        frame_h, frame_w = context.stream_height, context.stream_width
+
+                    if detections and (frame_w != context.inference_width or frame_h != context.inference_height):
+                        detections = scale_detections(
+                            detections,
+                            context.inference_width,
+                            context.inference_height,
+                            frame_w,
+                            frame_h,
+                        )
+                    detection_count = len(detections)
+
+                    # Annotate frame (no copy needed - frame is replaced each iteration)
+                    polygon = context.zone_polygon if context.detection_mode == DetectionMode.zone else None
+                    annotated = annotate_frame(
+                        frame,
                         detections,
-                        context.inference_width,
-                        context.inference_height,
-                        frame_w,
-                        frame_h,
+                        mode=context.detection_mode.value,
+                        polygon=polygon,
                     )
-                detection_count = len(detections)
 
-                # Annotate frame (no copy needed - frame is replaced each iteration)
-                polygon = context.zone_polygon if context.detection_mode == DetectionMode.zone else None
-                annotated = annotate_frame(
-                    frame,
-                    detections,
-                    mode=context.detection_mode.value,
-                    polygon=polygon,
-                )
+                    # Add "AI Disabled" overlay when inference is off
+                    if not context.inference_enabled:
+                        h, w = annotated.shape[:2]
+                        text = "AI Disabled"
+                        font = cv2.FONT_HERSHEY_SIMPLEX
+                        font_scale = min(w, h) / 400.0  # Scale based on frame size
+                        thickness = max(1, int(font_scale * 2))
+                        (text_w, text_h), _ = cv2.getTextSize(text, font, font_scale, thickness)
+                        x = (w - text_w) // 2
+                        y = (h + text_h) // 2
+                        # Draw shadow for better visibility
+                        cv2.putText(annotated, text, (x + 2, y + 2), font, font_scale, (0, 0, 0), thickness + 1)
+                        cv2.putText(annotated, text, (x, y), font, font_scale, (128, 128, 128), thickness)
 
-                # Add "AI Disabled" overlay when inference is off
-                if not context.inference_enabled:
-                    h, w = annotated.shape[:2]
-                    text = "AI Disabled"
-                    font = cv2.FONT_HERSHEY_SIMPLEX
-                    font_scale = min(w, h) / 400.0  # Scale based on frame size
-                    thickness = max(1, int(font_scale * 2))
-                    (text_w, text_h), _ = cv2.getTextSize(text, font, font_scale, thickness)
-                    x = (w - text_w) // 2
-                    y = (h + text_h) // 2
-                    # Draw shadow for better visibility
-                    cv2.putText(annotated, text, (x + 2, y + 2), font, font_scale, (0, 0, 0), thickness + 1)
-                    cv2.putText(annotated, text, (x, y), font, font_scale, (128, 128, 128), thickness)
+                    # Calculate FPS (exponential moving average)
+                    fps = 0.0
+                    prev_time = context.last_frame_time
+                    context.last_frame_time = loop_start
+                    if prev_time > 0:
+                        delta = max(loop_start - prev_time, 1e-6)
+                        instant_fps = 1.0 / delta
+                        if context.fps_ema <= 0:
+                            context.fps_ema = instant_fps
+                        else:
+                            context.fps_ema = (context.fps_ema * 0.8) + (instant_fps * 0.2)
+                        fps = context.fps_ema
 
-                # Calculate FPS (exponential moving average)
-                fps = 0.0
-                prev_time = context.last_frame_time
-                context.last_frame_time = loop_start
-                if prev_time > 0:
-                    delta = max(loop_start - prev_time, 1e-6)
-                    instant_fps = 1.0 / delta
-                    if context.fps_ema <= 0:
-                        context.fps_ema = instant_fps
-                    else:
-                        context.fps_ema = (context.fps_ema * 0.8) + (instant_fps * 0.2)
-                    fps = context.fps_ema
+                    # Downscale for streaming if configured (extra check, usually covered above)
+                    stream_frame = downscale_for_stream(annotated)
 
-                # Downscale for streaming if configured
-                stream_frame = downscale_for_stream(annotated)
-
-                # Publish frame
-                await self.frame_processor.publish_frame(
-                    camera_id=str(camera_id),
-                    frame=stream_frame,
-                    fps=fps,
-                    detection_count=detection_count,
-                    infer_fps=context.infer_fps_ema if context.inference_enabled else 0.0,
-                )
+                    # Publish frame
+                    await self.frame_processor.publish_frame(
+                        camera_id=str(camera_id),
+                        frame=stream_frame,
+                        fps=fps,
+                        detection_count=detection_count,
+                        infer_fps=context.infer_fps_ema if context.inference_enabled else 0.0,
+                    )
 
                 context.frames_processed += 1
 

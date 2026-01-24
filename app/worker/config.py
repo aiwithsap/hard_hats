@@ -22,8 +22,6 @@ class WorkerConfig:
     DEFAULT_TARGET_FPS: float = float(os.getenv("DEFAULT_TARGET_FPS", "0.5"))
     MAX_CONCURRENT_CAMERAS: int = int(os.getenv("MAX_CONCURRENT_CAMERAS", "20"))
     STREAM_FPS_MAX: float = float(os.getenv("STREAM_FPS_MAX", "15"))
-    STREAM_MAX_WIDTH: int = int(os.getenv("STREAM_MAX_WIDTH", "360"))
-    STREAM_MAX_HEIGHT: int = int(os.getenv("STREAM_MAX_HEIGHT", "360"))
 
     # Stream size limits (resize only if frame exceeds these dimensions)
     # Set to 0 to use inference dimensions as stream size
